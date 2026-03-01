@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="sv">
 <head>
-    <title>Västerheim - World Engine</title>
+    <title>Vasterheim - World Engine</title>
     <meta charset="utf-8" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
@@ -128,7 +128,7 @@
     const scriptURL = "https://script.google.com/macros/s/AKfycbznfypRXyfQAVrprQnbStenJYeyc-91VE3M5sJWtlU_d26k3vUjAZbkF7Nrbl7yU_Rb/exec";
     var map = L.map('map', { crs: L.CRS.Simple, minZoom: -2, attributionControl: false });
     var bounds = [[0, 0], [1000, 1400]]; 
-    L.imageOverlay('västerheim.jpg', bounds).addTo(map);
+    L.imageOverlay('vasterheim.jpg', bounds).addTo(map);
     map.fitBounds(bounds);
 
     var isDM = false, savedData = [], activeFilter = 'all', currentCoords = null;
@@ -279,3 +279,4 @@
 </script>
 </body>
 </html>
+
