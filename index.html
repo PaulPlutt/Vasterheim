@@ -125,7 +125,7 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    const scriptURL = "https://script.google.com/macros/s/AKfycbxAkIRN-rix3xRld4ql4eAf3qmICiDW-tclJ2ovPoMxC5qriKWHRBOiUtbYWvZTCsp6/exec";
+    const scriptURL = "https://script.google.com/macros/s/AKfycbzdwVM9nGRIotEWcfxgawkC5xP99L6nbzgvipXqMo6cR7Vy7KYYj2rIvgNicduCE9tO/exec";
     var map = L.map('map', { crs: L.CRS.Simple, minZoom: -2, maxZoom: 2, attributionControl: false });
     var bounds = [[0, 0], [2887, 3840]]; 
     L.imageOverlay('VASTERHEIM.webp', bounds).addTo(map);
@@ -230,7 +230,7 @@
         m.name, m.type, m.coords[0], m.coords[1], 
         m.pop, m.pol, m.res, m.danger, 
         m.leaders, m.allies, m.desc, m.secret, 
-        m.img1, m.img2, m.img3, "", "", m.dimg1, m.dimg2
+        m.img1, m.img2, m.img3, "", "", m.dimg1, m.dimg2, "", "", ""
     ])];
 
     try {
@@ -303,6 +303,7 @@
 </script>
 </body>
 </html>
+
 
 
 
