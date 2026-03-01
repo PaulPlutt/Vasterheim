@@ -126,8 +126,8 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
     const scriptURL = "https://script.google.com/macros/s/AKfycbznfypRXyfQAVrprQnbStenJYeyc-91VE3M5sJWtlU_d26k3vUjAZbkF7Nrbl7yU_Rb/exec";
-    var map = L.map('map', { crs: L.CRS.Simple, minZoom: -2, attributionControl: false });
-    var bounds = [[0, 0], [1000, 1400]]; 
+    var map = L.map('map', { crs: L.CRS.Simple, minZoom: -2, maxZoom: 2, attributionControl: false });
+    var bounds = [[0, 0], [2887, 3840]]; 
     L.imageOverlay('https://i.postimg.cc/pm9Q17kh/VASTERHEIM.webp', bounds).addTo(map);
     map.fitBounds(bounds);
 
@@ -279,6 +279,7 @@
 </script>
 </body>
 </html>
+
 
 
 
