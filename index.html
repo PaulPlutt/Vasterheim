@@ -219,13 +219,27 @@
     }
 
     async function deletePoint(idx) {
-        if (confirm("Vill du verkligen radera " + savedData[idx].name + "?")) {
-            savedData.splice(idx, 1);
-            const output = [["Rubrik"], ...savedData.map(m => [m.name, m.type, m.lat||m.coords[0], m.lng||m.coords[1], m.pop, m.pol, m.res, m.danger, m.leaders, m.allies, m.desc, m.secret, m.img1, m.img2, m.img3, "", "", m.dimg1, m.dimg2, "", "", ""])];
-            await fetch(scriptURL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
-            renderMarkers();
-        }
+    if (confirm("Vill du verkligen radera " + savedData[idx].name + "?")) {
+        // Ta bort från lokala listan
+        savedData.splice(idx, 1);
+        
+        document.getElementById('cloud-status').innerText = "📤 Raderar...";
+        
+        // Skapa den nya listan för Google Sheets
+        const output = [["Rubrik"], ...savedData.map(m => [
+            m.name, m.type, m.coords[0], m.coords[1], 
+            m.pop, m.pol, m.res, m.danger, 
+            m.leaders, m.allies, m.desc, m.secret, 
+            m.img1, m.img2, m.img3, "", "", m.dimg1, m.dimg2, "", "", ""
+        ])];
+        
+        // Skicka till molnet
+        await fetch(scriptURL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
+        
+        document.getElementById('cloud-status').innerText = "✅ Raderat";
+        renderMarkers(); // Rita om kartan direkt
     }
+}
 
     function changeImg(btn, d) {
         const c = btn.parentElement; const imgs = c.querySelectorAll('.carousel-img');
@@ -279,6 +293,7 @@
 </script>
 </body>
 </html>
+
 
 
 
