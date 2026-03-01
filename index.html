@@ -125,7 +125,7 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    const scriptURL = "https://script.google.com/macros/s/AKfycbznfypRXyfQAVrprQnbStenJYeyc-91VE3M5sJWtlU_d26k3vUjAZbkF7Nrbl7yU_Rb/exec";
+    const scriptURL = "https://script.google.com/macros/s/AKfycbxAkIRN-rix3xRld4ql4eAf3qmICiDW-tclJ2ovPoMxC5qriKWHRBOiUtbYWvZTCsp6/exec";
     var map = L.map('map', { crs: L.CRS.Simple, minZoom: -2, maxZoom: 2, attributionControl: false });
     var bounds = [[0, 0], [2887, 3840]]; 
     L.imageOverlay('VASTERHEIM.webp', bounds).addTo(map);
@@ -219,25 +219,35 @@
     }
 
     async function deletePoint(idx) {
-    if (confirm("Vill du verkligen radera " + savedData[idx].name + "?")) {
-        // Ta bort från lokala listan
-        savedData.splice(idx, 1);
-        
-        document.getElementById('cloud-status').innerText = "📤 Raderar...";
-        
-        // Skapa den nya listan för Google Sheets
-        const output = [["Rubrik"], ...savedData.map(m => [
-            m.name, m.type, m.coords[0], m.coords[1], 
-            m.pop, m.pol, m.res, m.danger, 
-            m.leaders, m.allies, m.desc, m.secret, 
-            m.img1, m.img2, m.img3, "", "", m.dimg1, m.dimg2, "", "", ""
-        ])];
-        
-        // Skicka till molnet
-        await fetch(scriptURL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
-        
-        document.getElementById('cloud-status').innerText = "✅ Raderat";
-        renderMarkers(); // Rita om kartan direkt
+    if (!confirm("Vill du verkligen radera " + savedData[idx].name + "?")) return;
+
+    // 1. Ta bort lokalt
+    savedData.splice(idx, 1);
+    document.getElementById('cloud-status').innerText = "📤 Raderar...";
+
+    // 2. Skapa en REN lista för Google (precis som kolumnerna i ditt ark)
+    const output = [["Rubrik"], ...savedData.map(m => [
+        m.name, m.type, m.coords[0], m.coords[1], 
+        m.pop, m.pol, m.res, m.danger, 
+        m.leaders, m.allies, m.desc, m.secret, 
+        m.img1, m.img2, m.img3, "", "", m.dimg1, m.dimg2
+    ])];
+
+    try {
+        // 3. Skicka till molnet
+        await fetch(scriptURL, { 
+            method: 'POST', 
+            mode: 'no-cors', 
+            body: JSON.stringify(output) 
+        });
+
+        // 4. Vänta lite och ladda om
+        setTimeout(() => {
+            renderMarkers(); 
+            document.getElementById('cloud-status').innerText = "✅ Klart";
+        }, 1000);
+    } catch (e) {
+        document.getElementById('cloud-status').innerText = "❌ Fel";
     }
 }
 
@@ -293,6 +303,7 @@
 </script>
 </body>
 </html>
+
 
 
 
