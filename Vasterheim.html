@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <title>Västerheim - World Engine</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { margin: 0; display: flex; flex-direction: column; height: 100vh; font-family: 'Segoe UI', sans-serif; background: #0b1d21; color: white; overflow: hidden; }
+        #map { flex-grow: 1; width: 100vw; background: #0b1d21; cursor: crosshair; }
+        #top-bar { background: #0b1d21; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #2a4d53; z-index: 1001; }
+        #filter-bar { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+        .filter-btn { padding: 5px 10px; border-radius: 4px; border: 1px solid #447a82; background: #162a2e; color: white; cursor: pointer; font-size: 11px; }
+        .filter-btn.active { background: #2ecc71; border-color: white; }
+        #dm-status { font-size: 12px; padding: 8px 15px; border-radius: 4px; background: #c0392b; cursor: pointer; font-weight: bold; border: none; color: white; }
+        #toggle-editor-btn { background: #2a4d53; color: #8eb0b7; border: 2px solid #447a82; border-bottom: none; padding: 5px 15px; cursor: pointer; font-size: 10px; font-weight: bold; align-self: flex-start; margin-left: 20px; border-radius: 5px 5px 0 0; z-index: 1001; }
+        
+        #editor-panel { background: #162a2e; padding: 15px; border-top: 3px solid #2a4d53; display: flex; flex-direction: column; gap: 12px; z-index: 1001; max-height: 45vh; overflow-y: auto; transition: 0.3s; }
+        .editor-hidden { height: 0; padding: 0 !important; overflow: hidden !important; border-top: none !important; }
+        .editor-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 5px; }
+        .input-group { display: flex; flex-direction: column; gap: 4px; font-size: 10px; flex: 1; min-width: 120px; }
+        .dm-only-field { display: none; }
+        label { color: #8eb0b7; font-weight: bold; text-transform: uppercase; }
+        input, select, textarea { background: #2a4d53; border: 1px solid #447a82; color: white; padding: 6px; border-radius: 4px; font-size: 12px; width: 100%; box-sizing: border-box; }
+        
+        .npc-box { background: rgba(0,0,0,0.3); border: 1px solid #9b59b6; padding: 8px; border-radius: 4px; display: flex; flex-direction: column; gap: 5px; min-width: 180px; }
+        .npc-gen-btn { background: #9b59b6; border: none; color: white; padding: 6px; border-radius: 3px; cursor: pointer; font-size: 10px; font-weight: bold; }
+        #npc-result { font-size: 11px; color: #e1bee7; font-style: italic; min-height: 14px; text-align: center; }
+
+        button.primary-save { background: #2ecc71; border: none; color: white; padding: 12px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 10px; font-size: 14px; }
+        
+        .carousel-container { position: relative; margin: 8px 0; background: #000; border-radius: 4px; overflow: hidden; height: 160px; display: flex; align-items: center; justify-content: center; }
+        .carousel-img { max-width: 100%; max-height: 100%; object-fit: contain; display: none; }
+        .carousel-img.active { display: block; }
+        .nav-btn { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(0,0,0,0.6); color: white; border: none; padding: 10px 5px; cursor: pointer; z-index: 5; font-weight: bold; }
+        .prev { left: 0; } .next { right: 0; }
+        .img-counter { position: absolute; bottom: 5px; right: 5px; background: rgba(0,0,0,0.7); padding: 2px 6px; border-radius: 10px; font-size: 10px; }
+
+        .leaflet-popup-content-wrapper { background: #162a2e !important; color: white !important; border: 1px solid #447a82; max-width: 280px; }
+        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin: 8px 0; font-size: 0.75em; background: rgba(0,0,0,0.2); padding: 8px; border-radius: 4px; }
+        .stat-item b { color: #8eb0b7; display: block; font-size: 0.7em; }
+        .popup-desc { border-top: 1px solid #2a4d53; padding-top: 5px; font-size: 0.85em; }
+        .dm-info-box { border-top: 1px dashed #e74c3c; margin-top: 8px; padding-top: 8px; color: #ff6b6b; font-size: 0.8em; }
+        .popup-controls { display: flex; gap: 5px; margin-top: 10px; border-top: 1px solid #2a4d53; padding-top: 10px; }
+        .btn-edit, .btn-delete { border: none; padding: 5px; flex: 1; cursor: pointer; border-radius: 3px; font-size: 10px; color: white; }
+        .btn-edit { background: #2a4d53; } .btn-delete { background: #c0392b; }
+    </style>
+</head>
+<body>
+
+<div id="top-bar">
+    <div id="filter-bar">
+        <button class="filter-btn active" onclick="toggleFilter('all', this)">Alla</button>
+        <button class="filter-btn" onclick="toggleFilter('gold', this)">Huvudstad</button>
+        <button class="filter-btn" onclick="toggleFilter('blue', this)">Stad</button>
+        <button class="filter-btn" onclick="toggleFilter('green', this)">By</button>
+        <button class="filter-btn" onclick="toggleFilter('grey', this)">Ruin</button>
+        <button class="filter-btn" onclick="toggleFilter('red', this)">Fara</button>
+        <button class="filter-btn" onclick="toggleFilter('black', this)">Grotta</button>
+        <button class="filter-btn" onclick="toggleFilter('violet', this)">Magi</button>
+        <button class="filter-btn" onclick="toggleFilter('orange', this)">Landmärke</button>
+        <span id="cloud-status" style="font-size:10px; color:#8eb0b7; margin-left:10px;">Ansluter...</span>
+    </div>
+    <button id="dm-status" onclick="toggleDM()">🔒 DM LOGIN</button>
+</div>
+
+<div id="map"></div>
+
+<button id="toggle-editor-btn" onclick="toggleEditorPanel()">▲ VISA EDITOR</button>
+<div id="editor-panel" class="editor-hidden">
+    <input type="hidden" id="edit-index" value="-1">
+    
+    <div class="editor-row">
+        <div class="npc-box">
+            <label style="color:#9b59b6; font-size:9px;">Inspiration</label>
+            <div id="npc-result">Slumpa fram en person...</div>
+            <button class="npc-gen-btn" onclick="generateNPC()">🎲 SLUMPA NPC</button>
+        </div>
+        <div class="input-group"><label>Namn på plats</label><input type="text" id="node-name"></div>
+        <div class="input-group"><label>Typ</label>
+            <select id="node-type">
+                <option value="gold">Huvudstad</option>
+                <option value="blue" selected>Stad</option>
+                <option value="green">By</option>
+                <option value="grey">Ruin</option>
+                <option value="red">Fara</option>
+                <option value="black">Grotta</option>
+                <option value="violet">Magi</option>
+                <option value="orange">Landmärke</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="editor-row">
+        <div class="input-group"><label>Pop</label><input type="text" id="node-pop"></div>
+        <div class="input-group"><label>Ledare</label><input type="text" id="node-pol"></div>
+        <div class="input-group"><label>Resurs</label><input type="text" id="node-res"></div>
+        <div class="input-group"><label>Fara (1-10)</label><input type="text" id="node-danger"></div>
+    </div>
+
+    <div class="editor-row">
+        <div class="input-group"><label>Kända profiler</label><input type="text" id="node-leaders"></div>
+        <div class="input-group"><label>Bekantskaper</label><input type="text" id="node-allies"></div>
+    </div>
+
+    <div class="editor-row">
+        <div class="input-group"><label>Bilder (3st URL/Länkar)</label>
+            <div style="display:flex; gap:2px;">
+                <input type="text" id="img1" placeholder="Bild 1"><input type="text" id="img2" placeholder="Bild 2"><input type="text" id="img3" placeholder="Bild 3">
+            </div>
+        </div>
+        <div class="input-group dm-only-field"><label style="color:#ff6b6b">Hemliga Bilder (2st URL)</label>
+            <div style="display:flex; gap:2px;">
+                <input type="text" id="dimg1" placeholder="DM 1"><input type="text" id="dimg2" placeholder="DM 2">
+            </div>
+        </div>
+    </div>
+
+    <div class="editor-row">
+        <div class="input-group" style="flex: 2;"><label>Beskrivning</label><textarea id="node-desc" rows="2"></textarea></div>
+        <div class="input-group dm-only-field" style="flex: 2;"><label style="color:#ff6b6b">Hemlig DM Info</label><textarea id="node-secret" rows="2"></textarea></div>
+    </div>
+    
+    <button class="primary-save" onclick="saveToCloud()">SPARA TILL MOLNET</button>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    const scriptURL = "https://script.google.com/macros/s/AKfycbznfypRXyfQAVrprQnbStenJYeyc-91VE3M5sJWtlU_d26k3vUjAZbkF7Nrbl7yU_Rb/exec";
+    var map = L.map('map', { crs: L.CRS.Simple, minZoom: -2, attributionControl: false });
+    var bounds = [[0, 0], [1000, 1400]]; 
+    L.imageOverlay('västerheim.jpg', bounds).addTo(map);
+    map.fitBounds(bounds);
+
+    var isDM = false, savedData = [], activeFilter = 'all', currentCoords = null;
+
+    const firstNames = ["Erik", "Alva", "Gunnar", "Sigrid", "Ivar", "Helga", "Björn", "Astrid", "Rolf", "Ingrid", "Tor", "Svea", "Olof", "Freja", "Knut", "Ylva", "Harald", "Ragnhild", "Leif", "Eira"];
+    const lastNames = ["Järnhand", "Stenskalle", "Falköga", "Ekrot", "Sjöfarare", "Korpunge", "Björnbane", "Vindlöpare", "Guldgrävare", "Frostskägg", "Pilbåge", "Hammarslag", "Nattvandrare", "Ulvtand", "Bergfast", "Eldsjäl", "Skarpsyn", "Gråkappa", "Blodsyxa", "Vildhjärta"];
+    const roles = ["Smed", "Värdshusvärd", "Vakt", "Präst", "Tjuv", "Magiker", "Bonde", "Jägare", "Handlare", "Läkare", "Kapten", "Lärling", "Siareska", "Bibliotekarie", "Fiskare", "Soldat", "Snickare", "Skalden", "Alkemist", "Spion"];
+
+    function generateNPC() {
+        const name = firstNames[Math.floor(Math.random()*firstNames.length)] + " " + lastNames[Math.floor(Math.random()*lastNames.length)];
+        const role = roles[Math.floor(Math.random()*roles.length)];
+        document.getElementById('npc-result').innerText = name + " (" + role + ")";
+    }
+
+    function formatImgUrl(url, folder) {
+        if(!url) return null;
+        let clean = url.trim();
+        if(clean.toLowerCase().startsWith('http')) {
+            if(clean.includes('drive.google.com')) return clean.replace('/file/d/', '/uc?export=view&id=').split('/view')[0];
+            return clean;
+        }
+        return clean.includes('/') ? `./${clean}` : `./${folder}/${clean}`;
+    }
+
+    async function loadFromCloud() {
+        document.getElementById('cloud-status').innerText = "⏳ Synkar...";
+        try {
+            const response = await fetch(scriptURL);
+            const data = await response.json();
+            savedData = data.slice(1).map(row => ({
+                name: row[0]||"", type: row[1]||"blue", coords: [parseFloat(row[2])||0, parseFloat(row[3])||0],
+                pop: row[4]||"", pol: row[5]||"", res: row[6]||"", danger: row[7]||"", 
+                leaders: row[8]||"", allies: row[9]||"", desc: row[10]||"", secret: row[11]||"",
+                img1: row[12], img2: row[13], img3: row[14], dimg1: row[17], dimg2: row[18]
+            }));
+            renderMarkers();
+            document.getElementById('cloud-status').innerText = "✅ Synkad";
+        } catch (e) { document.getElementById('cloud-status').innerText = "❌ Fel"; }
+    }
+
+    async function saveToCloud() {
+        const name = document.getElementById('node-name').value;
+        if(!currentCoords || !name) return alert("Välj plats på kartan och skriv ett namn!");
+        
+        const p = {
+            name: name, type: document.getElementById('node-type').value, lat: currentCoords[0], lng: currentCoords[1],
+            pop: document.getElementById('node-pop').value, pol: document.getElementById('node-pol').value,
+            res: document.getElementById('node-res').value, danger: document.getElementById('node-danger').value,
+            leaders: document.getElementById('node-leaders').value, allies: document.getElementById('node-allies').value,
+            desc: document.getElementById('node-desc').value, secret: document.getElementById('node-secret').value,
+            img1: document.getElementById('img1').value, img2: document.getElementById('img2').value, img3: document.getElementById('img3').value,
+            dimg1: document.getElementById('dimg1').value, dimg2: document.getElementById('dimg2').value
+        };
+
+        const idx = parseInt(document.getElementById('edit-index').value);
+        if (idx > -1) savedData[idx] = p; else savedData.push(p);
+
+        document.getElementById('cloud-status').innerText = "📤 Sparar...";
+        const output = [["Rubrik"], ...savedData.map(m => [m.name, m.type, m.lat||m.coords[0], m.lng||m.coords[1], m.pop, m.pol, m.res, m.danger, m.leaders, m.allies, m.desc, m.secret, m.img1, m.img2, m.img3, "", "", m.dimg1, m.dimg2, "", "", ""])];
+        
+        await fetch(scriptURL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
+        
+        // Återställ och rendera direkt utan reload
+        document.getElementById('edit-index').value = "-1";
+        document.getElementById('cloud-status').innerText = "✅ Sparat";
+        renderMarkers();
+        toggleEditorPanel();
+    }
+
+    function renderMarkers() {
+        map.eachLayer(l => { if (l instanceof L.Marker) map.removeLayer(l); });
+        savedData.forEach((m, i) => {
+            if (activeFilter !== 'all' && m.type !== activeFilter) return;
+            let urls = [formatImgUrl(m.img1, "Bilder"), formatImgUrl(m.img2, "Bilder"), formatImgUrl(m.img3, "Bilder")].filter(x => x);
+            if(isDM) urls = [...urls, formatImgUrl(m.dimg1, "DM_Bilder"), formatImgUrl(m.dimg2, "DM_Bilder")].filter(x => x);
+
+            let carousel = "";
+            if(urls.length > 0) {
+                carousel = `<div class="carousel-container">${urls.length>1?'<button class="nav-btn prev" onclick="changeImg(this,-1)">&#10094;</button>':''}`;
+                urls.forEach((u,idx) => carousel += `<img src="${u}" class="carousel-img ${idx===0?'active':''}">`);
+                carousel += `${urls.length>1?'<button class="nav-btn next" onclick="changeImg(this,1)">&#10095;</button><div class="img-counter">1/'+urls.length+'</div>':''}</div>`;
+            }
+
+            let content = `<div style="color:white;"><b style="color:#2ecc71; font-size:1.2em;">${m.name}</b>${carousel}<div class="stat-grid"><div class="stat-item"><b>Pop</b>${m.pop||'-'}</div><div class="stat-item"><b>Ledare</b>${m.pol||'-'}</div><div class="stat-item"><b>Resurs</b>${m.res||'-'}</div><div class="stat-item"><b>Fara</b>${m.danger||'-'}</div><div class="stat-item" style="grid-column:span 2"><b>Profiler</b>${m.leaders||'-'}</div><div class="stat-item" style="grid-column:span 2"><b>Bekanta</b>${m.allies||'-'}</div></div><p class="popup-desc">${m.desc||''}</p>`;
+            if(isDM) content += `<div class="dm-info-box"><b>DM INFO:</b> ${m.secret||''}</div><div class="popup-controls"><button class="btn-edit" onclick="prepareEdit(${i})">ÄNDRA</button><button class="btn-delete" onclick="deletePoint(${i})">RADERA</button></div>`;
+            L.marker(m.coords, {icon: getIcon(m.type)}).addTo(map).bindPopup(content, {maxWidth: 260});
+        });
+    }
+
+    async function deletePoint(idx) {
+        if (confirm("Vill du verkligen radera " + savedData[idx].name + "?")) {
+            savedData.splice(idx, 1);
+            const output = [["Rubrik"], ...savedData.map(m => [m.name, m.type, m.lat||m.coords[0], m.lng||m.coords[1], m.pop, m.pol, m.res, m.danger, m.leaders, m.allies, m.desc, m.secret, m.img1, m.img2, m.img3, "", "", m.dimg1, m.dimg2, "", "", ""])];
+            await fetch(scriptURL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
+            renderMarkers();
+        }
+    }
+
+    function changeImg(btn, d) {
+        const c = btn.parentElement; const imgs = c.querySelectorAll('.carousel-img');
+        let cur = 0; imgs.forEach((img, i) => { if(img.classList.contains('active')) cur = i; });
+        imgs[cur].classList.remove('active');
+        let nxt = (cur + d + imgs.length) % imgs.length;
+        imgs[nxt].classList.add('active');
+        c.querySelector('.img-counter').innerText = (nxt + 1) + "/" + imgs.length;
+    }
+
+    function getIcon(c) { return new L.Icon({ iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-${c}.png`, iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34] }); }
+    function toggleDM() { if(!isDM && prompt("Lösenord:") === "hemligt") isDM = true; else isDM = false; document.getElementById('dm-status').innerText = isDM ? "🔓 DM LÄGE" : "🔒 DM LOGIN"; document.querySelectorAll('.dm-only-field').forEach(e => e.style.display = isDM ? 'block' : 'none'); renderMarkers(); }
+    function toggleEditorPanel() { 
+        document.getElementById('editor-panel').classList.toggle('editor-hidden'); 
+        if(document.getElementById('editor-panel').classList.contains('editor-hidden')) {
+            document.getElementById('edit-index').value = "-1"; // Nollställ index när man stänger
+            document.querySelectorAll('#editor-panel input, #editor-panel textarea').forEach(i => i.value = "");
+        }
+    }
+    function toggleFilter(t, b) { activeFilter = t; document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active')); b.classList.add('active'); renderMarkers(); }
+    
+    map.on('click', e => { 
+        currentCoords = [Math.round(e.latlng.lat), Math.round(e.latlng.lng)]; 
+        document.getElementById('editor-panel').classList.remove('editor-hidden'); 
+        document.getElementById('edit-index').value = "-1"; 
+        document.getElementById('node-name').focus();
+    });
+
+    function prepareEdit(i) {
+        const m = savedData[i]; 
+        document.getElementById('editor-panel').classList.remove('editor-hidden');
+        document.getElementById('node-name').value = m.name; 
+        document.getElementById('node-pop').value = m.pop; 
+        document.getElementById('node-pol').value = m.pol;
+        document.getElementById('node-res').value = m.res; 
+        document.getElementById('node-danger').value = m.danger; 
+        document.getElementById('node-leaders').value = m.leaders;
+        document.getElementById('node-allies').value = m.allies; 
+        document.getElementById('node-desc').value = m.desc; 
+        document.getElementById('node-secret').value = m.secret;
+        document.getElementById('img1').value = m.img1||""; 
+        document.getElementById('img2').value = m.img2||""; 
+        document.getElementById('img3').value = m.img3||"";
+        document.getElementById('dimg1').value = m.dimg1||""; 
+        document.getElementById('dimg2').value = m.dimg2||"";
+        document.getElementById('edit-index').value = i; 
+        currentCoords = m.coords; 
+        map.closePopup();
+    }
+    loadFromCloud();
+</script>
+</body>
+</html>
