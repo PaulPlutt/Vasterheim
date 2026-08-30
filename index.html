@@ -93,7 +93,7 @@
 <div id="content-row">
     <div id="map"></div>
 
-    <button id="toggle-editor-btn" onclick="toggleEditorPanel()">◀ REDIGERA</button>
+    <button id="toggle-editor-btn" class="dm-only-btn" onclick="toggleEditorPanel()">◀ REDIGERA</button>
 
     <div id="editor-panel" class="editor-hidden">
         <input type="hidden" id="edit-index" value="-1">
@@ -303,7 +303,10 @@
         document.getElementById('dm-status').innerText = isDM ? "🔓 DM LÄGE" : "🔒 DM LOGIN";
         document.querySelectorAll('.dm-only-field').forEach(e => e.style.display = isDM ? 'block' : 'none');
         document.querySelectorAll('.dm-only-btn').forEach(e => e.style.display = isDM ? 'inline-block' : 'none');
-        if (!isDM) cancelPlacingMode(); // avbryt ev. pågående placering om man loggar ut
+        if (!isDM) {
+            cancelPlacingMode();   // avbryt ev. pågående placering om man loggar ut
+            setEditorOpen(false);  // stäng panelen - den är ändå inte till för spelare
+        }
         renderMarkers();
     }
 
