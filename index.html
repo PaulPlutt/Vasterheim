@@ -12,6 +12,11 @@
         .filter-btn.active { background: #2ecc71; border-color: white; }
         #dm-status { font-size: 12px; padding: 8px 15px; border-radius: 4px; background: #c0392b; cursor: pointer; font-weight: bold; border: none; color: white; }
 
+        /* ---- NYTT: knapp för att lägga till plats, bara synlig i DM-läge ---- */
+        .dm-only-btn { display: none; }
+        #add-place-btn { font-size: 12px; padding: 8px 15px; border-radius: 4px; background: #2ecc71; cursor: pointer; font-weight: bold; border: none; color: #0b1d21; margin-right: 8px; }
+        #add-place-btn.placing { background: #f1c40f; }
+
         /* ---- NYTT: rad som håller karta + sidopanel bredvid varandra ---- */
         #content-row { flex-grow: 1; display: flex; flex-direction: row; position: relative; overflow: hidden; min-height: 0; }
 
@@ -79,7 +84,10 @@
         <button class="filter-btn" onclick="toggleFilter('orange', this)">Landmärke</button>
         <span id="cloud-status" style="font-size:10px; color:#8eb0b7; margin-left:10px;">Ansluter...</span>
     </div>
-    <button id="dm-status" onclick="toggleDM()">🔒 DM LOGIN</button>
+    <div>
+        <button id="add-place-btn" class="dm-only-btn" onclick="togglePlacingMode()">+ Lägg till plats</button>
+        <button id="dm-status" onclick="toggleDM()">🔒 DM LOGIN</button>
+    </div>
 </div>
 
 <div id="content-row">
@@ -290,7 +298,34 @@
     }
 
     function getIcon(c) { return new L.Icon({ iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-${c}.png`, iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34] }); }
-    function toggleDM() { if(!isDM && prompt("Lösenord:") === "hemligt") isDM = true; else isDM = false; document.getElementById('dm-status').innerText = isDM ? "🔓 DM LÄGE" : "🔒 DM LOGIN"; document.querySelectorAll('.dm-only-field').forEach(e => e.style.display = isDM ? 'block' : 'none'); renderMarkers(); }
+    function toggleDM() {
+        if(!isDM && prompt("Lösenord:") === "hemligt") isDM = true; else isDM = false;
+        document.getElementById('dm-status').innerText = isDM ? "🔓 DM LÄGE" : "🔒 DM LOGIN";
+        document.querySelectorAll('.dm-only-field').forEach(e => e.style.display = isDM ? 'block' : 'none');
+        document.querySelectorAll('.dm-only-btn').forEach(e => e.style.display = isDM ? 'inline-block' : 'none');
+        if (!isDM) cancelPlacingMode(); // avbryt ev. pågående placering om man loggar ut
+        renderMarkers();
+    }
+
+    // ---- NYTT: "Lägg till plats"-läge. Ett klick på kartan gör INGET om detta inte är aktivt. ----
+    var placingMode = false;
+    function togglePlacingMode() {
+        placingMode ? cancelPlacingMode() : startPlacingMode();
+    }
+    function startPlacingMode() {
+        placingMode = true;
+        document.getElementById('map').style.cursor = 'copy';
+        const btn = document.getElementById('add-place-btn');
+        btn.innerText = '❌ Avbryt (klicka på kartan)';
+        btn.classList.add('placing');
+    }
+    function cancelPlacingMode() {
+        placingMode = false;
+        document.getElementById('map').style.cursor = 'crosshair';
+        const btn = document.getElementById('add-place-btn');
+        btn.innerText = '+ Lägg till plats';
+        btn.classList.remove('placing');
+    }
 
     // ---- NYTT: en gemensam funktion som öppnar/stänger sidopanelen och håller knappen synkad ----
     function setEditorOpen(open) {
@@ -318,7 +353,9 @@
     function toggleFilter(t, b) { activeFilter = t; document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active')); b.classList.add('active'); renderMarkers(); }
 
     map.on('click', e => {
+        if (!placingMode) return; // Vanliga klick på kartan gör ingenting längre
         currentCoords = [Math.round(e.latlng.lat), Math.round(e.latlng.lng)];
+        cancelPlacingMode();
         setEditorOpen(true);
         document.getElementById('edit-index').value = "-1";
         document.getElementById('node-name').focus();
