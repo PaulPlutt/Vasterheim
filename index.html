@@ -4,6 +4,11 @@
     <title>Västerheim - World Engine</title>
     <meta charset="utf-8" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <!-- Firebase SDK (Compat versioner för enkelhet skull) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+
     <style>
         body { margin: 0; display: flex; flex-direction: column; height: 100vh; font-family: 'Segoe UI', sans-serif; background: #0b1d21; color: white; overflow: hidden; }
         #map { flex-grow: 1; width: 100vw; background: #0b1d21; cursor: crosshair; }
@@ -126,6 +131,20 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
     const scriptURL = "https://script.google.com/macros/s/AKfycbzdwVM9nGRIotEWcfxgawkC5xP99L6nbzgvipXqMo6cR7Vy7KYYj2rIvgNicduCE9tO/exec";
+    
+    // Inled Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyATmNvzWP-7e72LcBe4f8BY-g23nrlbtuw",
+      authDomain: "vasterheim-55836.firebaseapp.com",
+      databaseURL: "https://vasterheim-55836-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "vasterheim-55836",
+      storageBucket: "vasterheim-55836.appspot.com",
+      messagingSenderId: "216838279487",
+      appId: "1:216838279487:web:c5ec514d5cafe689e1c38a"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
     var map = L.map('map', { crs: L.CRS.Simple, minZoom: -2, maxZoom: 2, attributionControl: false });
     var bounds = [[0, 0], [2887, 3840]]; 
     L.imageOverlay('VASTERHEIM.webp', bounds).addTo(map);
@@ -191,7 +210,6 @@
         
         await fetch(scriptURL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
         
-        // Återställ och rendera direkt utan reload
         document.getElementById('edit-index').value = "-1";
         document.getElementById('cloud-status').innerText = "✅ Sparat";
         renderMarkers();
@@ -199,7 +217,7 @@
     }
 
     function renderMarkers() {
-        map.eachLayer(l => { if (l instanceof L.Marker) map.removeLayer(l); });
+        map.eachLayer(l => { if (l instanceof L.Marker && !l.isPlayerToken) map.removeLayer(l); });
         savedData.forEach((m, i) => {
             if (activeFilter !== 'all' && m.type !== activeFilter) return;
             let urls = [formatImgUrl(m.img1, "Bilder"), formatImgUrl(m.img2, "Bilder"), formatImgUrl(m.img3, "Bilder")].filter(x => x);
@@ -219,37 +237,28 @@
     }
 
     async function deletePoint(idx) {
-    if (!confirm("Vill du verkligen radera " + savedData[idx].name + "?")) return;
+        if (!confirm("Vill du verkligen radera " + savedData[idx].name + "?")) return;
 
-    // 1. Ta bort lokalt
-    savedData.splice(idx, 1);
-    document.getElementById('cloud-status').innerText = "📤 Raderar...";
+        savedData.splice(idx, 1);
+        document.getElementById('cloud-status').innerText = "📤 Raderar...";
 
-    // 2. Skapa en REN lista för Google (precis som kolumnerna i ditt ark)
-    const output = [["Rubrik"], ...savedData.map(m => [
-        m.name, m.type, m.coords[0], m.coords[1], 
-        m.pop, m.pol, m.res, m.danger, 
-        m.leaders, m.allies, m.desc, m.secret, 
-        m.img1, m.img2, m.img3, "", "", m.dimg1, m.dimg2, "", "", ""
-    ])];
+        const output = [["Rubrik"], ...savedData.map(m => [
+            m.name, m.type, m.coords[0], m.coords[1], 
+            m.pop, m.pol, m.res, m.danger, 
+            m.leaders, m.allies, m.desc, m.secret, 
+            m.img1, m.img2, m.img3, "", "", m.dimg1, m.dimg2, "", "", ""
+        ])];
 
-    try {
-        // 3. Skicka till molnet
-        await fetch(scriptURL, { 
-            method: 'POST', 
-            mode: 'no-cors', 
-            body: JSON.stringify(output) 
-        });
-
-        // 4. Vänta lite och ladda om
-        setTimeout(() => {
-            renderMarkers(); 
-            document.getElementById('cloud-status').innerText = "✅ Klart";
-        }, 1000);
-    } catch (e) {
-        document.getElementById('cloud-status').innerText = "❌ Fel";
+        try {
+            await fetch(scriptURL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
+            setTimeout(() => {
+                renderMarkers(); 
+                document.getElementById('cloud-status').innerText = "✅ Klart";
+            }, 1000);
+        } catch (e) {
+            document.getElementById('cloud-status').innerText = "❌ Fel";
+        }
     }
-}
 
     function changeImg(btn, d) {
         const c = btn.parentElement; const imgs = c.querySelectorAll('.carousel-img');
@@ -265,7 +274,7 @@
     function toggleEditorPanel() { 
         document.getElementById('editor-panel').classList.toggle('editor-hidden'); 
         if(document.getElementById('editor-panel').classList.contains('editor-hidden')) {
-            document.getElementById('edit-index').value = "-1"; // Nollställ index när man stänger
+            document.getElementById('edit-index').value = "-1";
             document.querySelectorAll('#editor-panel input, #editor-panel textarea').forEach(i => i.value = "");
         }
     }
@@ -299,17 +308,46 @@
         currentCoords = m.coords; 
         map.closePopup();
     }
+
+    // ==========================================
+    // NYTT: RealTids-Tokens via Firebase (Steg 1)
+    // ==========================================
+    const playerName = prompt("Vem är du vid bordet? (Skriv ditt namn eller karaktär):") || "Äventyrare";
+    
+    db.ref('tokens/' + playerName).on('value', (snapshot) => {
+        const pos = snapshot.val();
+        // Starta i mitten av kartan om pjäsen inte har en position än
+        const lat = pos ? pos.y : 1443; 
+        const lng = pos ? pos.x : 1920;
+
+        if (!window.myToken) {
+            // Skapa en rörbar markör för spelaren
+            window.myToken = L.marker([lat, lng], { 
+                draggable: true,
+                icon: new L.Icon({
+                    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-gold.png',
+                    iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34]
+                })
+            }).addTo(map);
+            
+            window.myToken.isPlayerToken = true; // Så den inte raderas av rensa-markörer
+            window.myToken.bindPopup("<b>Här är du:</b> " + playerName).openPopup();
+
+            // När spelaren drar sin pjäs och släpper den -> spara direkt till Firebase
+            window.myToken.on('dragend', (event) => {
+                const latLng = event.target.getLatLng();
+                db.ref('tokens/' + playerName).set({
+                    x: Math.round(latLng.lng),
+                    y: Math.round(latLng.lat)
+                });
+            });
+        } else {
+            // Om pjäsen flyttas från en annan skärm, uppdatera positionen mjukt
+            window.myToken.setLatLng([lat, lng]);
+        }
+    });
+
     loadFromCloud();
 </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
