@@ -67,6 +67,18 @@
         .popup-controls { display: flex; gap: 5px; margin-top: 10px; border-top: 1px solid #2a4d53; padding-top: 10px; }
         .btn-edit, .btn-delete { border: none; padding: 5px; flex: 1; cursor: pointer; border-radius: 3px; font-size: 10px; color: white; }
         .btn-edit { background: #2a4d53; } .btn-delete { background: #c0392b; }
+
+        /* ---- NYTT: flikar i sidopanelen (Plats / Invånare) ---- */
+        .panel-tabs { display: flex; gap: 4px; margin-bottom: 5px; }
+        .panel-tab { flex: 1; padding: 8px; background: #0b1d21; border: 1px solid #2a4d53; color: #8eb0b7; cursor: pointer; font-size: 11px; font-weight: bold; border-radius: 4px; }
+        .panel-tab.active { background: #2a4d53; color: white; border-color: #447a82; }
+        #place-tab-content, #npc-tab-content { display: flex; flex-direction: column; gap: 12px; }
+
+        /* ---- NYTT: NPC-lista under formuläret ---- */
+        #npc-list-items { font-size: 11px; color: #8eb0b7; max-height: 220px; overflow-y: auto; margin-top: 5px; background: rgba(0,0,0,0.2); border-radius: 4px; }
+        .npc-list-row { padding: 6px 8px; border-bottom: 1px solid #2a4d53; cursor: pointer; }
+        .npc-list-row:hover { background: rgba(255,255,255,0.05); }
+        #npc-save-status { font-size: 10px; color: #8eb0b7; text-align: center; min-height: 12px; }
     </style>
 </head>
 <body>
@@ -86,6 +98,7 @@
     </div>
     <div>
         <button id="add-place-btn" class="dm-only-btn" onclick="togglePlacingMode()">+ Lägg till plats</button>
+        <button id="add-npc-btn" class="dm-only-btn" onclick="openNPCTab()">+ Lägg till invånare</button>
         <button id="dm-status" onclick="toggleDM()">🔒 DM LOGIN</button>
     </div>
 </div>
@@ -96,15 +109,14 @@
     <button id="toggle-editor-btn" class="dm-only-btn" onclick="toggleEditorPanel()">◀ REDIGERA</button>
 
     <div id="editor-panel" class="editor-hidden">
+        <div class="panel-tabs">
+            <button id="tab-place-btn" class="panel-tab active" onclick="switchTab('place')">📍 PLATS</button>
+            <button id="tab-npc-btn" class="panel-tab" onclick="switchTab('npc')">👤 INVÅNARE</button>
+        </div>
+
+        <div id="place-tab-content">
         <input type="hidden" id="edit-index" value="-1">
 
-        <div class="editor-row">
-            <div class="npc-box">
-                <label style="color:#9b59b6; font-size:9px;">Inspiration</label>
-                <div id="npc-result">Slumpa fram en person...</div>
-                <button class="npc-gen-btn" onclick="generateNPC()">🎲 SLUMPA NPC</button>
-            </div>
-        </div>
         <div class="editor-row">
             <div class="input-group"><label>Namn på plats</label><input type="text" id="node-name"></div>
         </div>
@@ -162,12 +174,49 @@
         </div>
 
         <button class="primary-save" onclick="saveToCloud()">SPARA TILL MOLNET</button>
+        </div>
+
+        <div id="npc-tab-content" style="display:none;">
+            <input type="hidden" id="npc-edit-index" value="-1">
+
+            <div class="editor-row">
+                <div class="input-group"><label>Namn</label><input type="text" id="npc-name"></div>
+            </div>
+            <div class="editor-row">
+                <div class="input-group"><label>Ras</label><input type="text" id="npc-race"></div>
+                <div class="input-group"><label>Yrke</label><input type="text" id="npc-job"></div>
+            </div>
+            <div class="editor-row">
+                <div class="input-group"><label>Plats</label>
+                    <select id="npc-place"><option value="">– Ingen plats vald –</option></select>
+                </div>
+            </div>
+            <div class="editor-row">
+                <div class="input-group" style="flex:2;"><label>Utseende</label><textarea id="npc-appearance" rows="2"></textarea></div>
+            </div>
+            <div class="editor-row">
+                <div class="input-group" style="flex:2;"><label>Personlighet</label><textarea id="npc-personality" rows="2"></textarea></div>
+            </div>
+            <div class="editor-row">
+                <div class="input-group"><label>Mål</label><input type="text" id="npc-goal"></div>
+            </div>
+
+            <button class="npc-gen-btn" style="width:100%; padding:10px; font-size:12px;" onclick="randomizeNPC()">🎲 SLUMPA ALLT</button>
+            <button class="primary-save" onclick="saveNPCToCloud()">SPARA INVÅNARE</button>
+            <button class="btn-delete" style="width:100%; padding:8px; border-radius:4px;" onclick="deleteNPC()">RADERA VALD INVÅNARE</button>
+            <div id="npc-save-status"></div>
+
+            <div style="margin-top:10px; border-top:1px solid #2a4d53; padding-top:10px;">
+                <label>Sparade invånare</label>
+                <div id="npc-list-items"><i style="padding:8px; display:block;">Inga invånare sparade än.</i></div>
+            </div>
+        </div>
     </div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    const scriptURL = "https://script.googleusercontent.com/macros/echo?user_content_key=AUkAhnTI-8eLbUPMSoctVnFMU4fGO-EU4O-v8Wv2d0G8BojnETtY-zcpSfgVsTSepCZhRt1lH59-qXbsFq9cw_gK0MBpm9oQ4ENAm6gXgMDMmR6mMIpqNjD9clZ2bAtYTzp0LMa_U1uVELLixG1R1q5Y3S0vWBWeRVwCHyUapqeXW9Db1hLodXrbmU6cruHy7ApGwKdNDZqYQUlS6x5uHO7U8dkwXSYTYfCTj3dloZJsk05P2ZynIidtU9YUOOAu07C62Tp1cvr6ki5Qlujnqx7EcICoC0RUyA&lib=MdjAJ9gDVFzwAaiwCf2hKIHjtosKoxpvO";
+    const scriptURL = "https://script.google.com/macros/s/AKfycbzdwVM9nGRIotEWcfxgawkC5xP99L6nbzgvipXqMo6cR7Vy7KYYj2rIvgNicduCE9tO/exec";
     var map = L.map('map', { crs: L.CRS.Simple, minZoom: -2, maxZoom: 2, attributionControl: false });
     var bounds = [[0, 0], [2887, 3840]];
     L.imageOverlay('VASTERHEIM.webp', bounds).addTo(map);
@@ -179,10 +228,19 @@
     const lastNames = ["Järnhand", "Stenskalle", "Falköga", "Ekrot", "Sjöfarare", "Korpunge", "Björnbane", "Vindlöpare", "Guldgrävare", "Frostskägg", "Pilbåge", "Hammarslag", "Nattvandrare", "Ulvtand", "Bergfast", "Eldsjäl", "Skarpsyn", "Gråkappa", "Blodsyxa", "Vildhjärta"];
     const roles = ["Smed", "Värdshusvärd", "Vakt", "Präst", "Tjuv", "Magiker", "Bonde", "Jägare", "Handlare", "Läkare", "Kapten", "Lärling", "Siareska", "Bibliotekarie", "Fiskare", "Soldat", "Snickare", "Skalden", "Alkemist", "Spion"];
 
-    function generateNPC() {
-        const name = firstNames[Math.floor(Math.random()*firstNames.length)] + " " + lastNames[Math.floor(Math.random()*lastNames.length)];
-        const role = roles[Math.floor(Math.random()*roles.length)];
-        document.getElementById('npc-result').innerText = name + " (" + role + ")";
+    // ---- NYTT: ordbanker för NPC-generering ----
+    const races = ["Människa", "Alv", "Dvärg", "Halvling", "Halvalv", "Halvork", "Drakfödd", "Tiefling", "Gnom", "Ork", "Fé", "Genasi"];
+    const appearanceBuilds = ["smal", "kraftigt byggd", "muskulös", "spenslig", "undersätsig", "reslig", "böjd av ålder", "atletisk", "senig"];
+    const appearanceEyes = ["stålgrå", "djupbruna", "isblå", "bärnstensfärgade", "gröna", "svarta som natten", "olikfärgade"];
+    const appearanceFeatures = ["ett ärr över ena ögonbrynet", "tatueringar längs underarmarna", "gråsprängt hår", "ett brutet näsben som läkt snett", "fräknar över hela ansiktet", "en påfallande djup röst", "ovanligt långa fingrar", "ett saknat finger", "guldbrickor inflätade i skägget", "en käpp av mörkt trä", "solbränd hy", "ett konstant road uttryck"];
+    const personalityPool = ["blyg", "utåtriktad", "misstänksam", "godtrogen", "kreativ", "praktisk", "spontan", "metodisk", "hetlevrad", "stoisk", "girig", "generös", "fåfäng", "ödmjuk", "skvallrig", "tystlåten", "modig", "ängslig", "hämndlysten", "förlåtande", "ärlig", "lögnaktig", "lojal", "opportunistisk", "humoristisk", "dyster", "nyfiken", "likgiltig", "stolt", "självutplånande"];
+    const goalsPool = ["vill lämna staden för gott", "söker hämnd på någon som svek dem", "sparar pengar till ett bättre liv", "vill bli erkänd inom sitt hantverk", "döljer en hemlighet om sin familj", "vill hitta ett försvunnet syskon", "drömmer om att resa jorden runt", "vill ta över en förälders verksamhet", "är skyldig pengar till fel person", "söker meningen med livet", "försöker bevisa sig värdig för någon", "gömmer sig från sitt förflutna", "vill lära sig magi trots förbud", "hoppas bli insläppt i en förnäm krets", "vill hämnas en gammal orättvisa"];
+
+    function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+    function pickN(arr, n) {
+        const copy = [...arr], out = [];
+        for (let i = 0; i < n && copy.length; i++) out.push(copy.splice(Math.floor(Math.random() * copy.length), 1)[0]);
+        return out;
     }
 
     function formatImgUrl(url, folder) {
@@ -207,6 +265,7 @@
                 img1: row[12], img2: row[13], img3: row[14], dimg1: row[17], dimg2: row[18]
             }));
             renderMarkers();
+            populateNPCPlaceDropdown();
             document.getElementById('cloud-status').innerText = "✅ Synkad";
         } catch (e) { document.getElementById('cloud-status').innerText = "❌ Fel"; }
     }
@@ -355,10 +414,138 @@
     }
     function toggleFilter(t, b) { activeFilter = t; document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active')); b.classList.add('active'); renderMarkers(); }
 
+    // ============================================================
+    // NYTT: NPC-hantering. Eget blad ("Invanare") i samma kalkylark,
+    // helt separat från platsdatan ovan.
+    // ============================================================
+    var savedNPCs = [];
+
+    function switchTab(tab) {
+        document.getElementById('tab-place-btn').classList.toggle('active', tab === 'place');
+        document.getElementById('tab-npc-btn').classList.toggle('active', tab === 'npc');
+        document.getElementById('place-tab-content').style.display = tab === 'place' ? 'flex' : 'none';
+        document.getElementById('npc-tab-content').style.display = tab === 'npc' ? 'flex' : 'none';
+    }
+
+    function openNPCTab() {
+        switchTab('npc');
+        setEditorOpen(true);
+        document.getElementById('npc-edit-index').value = "-1";
+        clearNPCForm();
+        populateNPCPlaceDropdown();
+        document.getElementById('npc-name').focus();
+    }
+
+    function clearNPCForm() {
+        ['npc-name','npc-race','npc-job','npc-appearance','npc-personality','npc-goal'].forEach(id => document.getElementById(id).value = "");
+        document.getElementById('npc-place').value = "";
+    }
+
+    function populateNPCPlaceDropdown() {
+        const sel = document.getElementById('npc-place');
+        const current = sel.value;
+        sel.innerHTML = '<option value="">– Ingen plats vald –</option>' + savedData.map(m => `<option value="${m.name}">${m.name}</option>`).join('');
+        sel.value = current;
+    }
+
+    function randomizeNPC() {
+        document.getElementById('npc-name').value = pick(firstNames) + " " + pick(lastNames);
+        document.getElementById('npc-race').value = pick(races);
+        document.getElementById('npc-job').value = pick(roles);
+        document.getElementById('npc-appearance').value = `Är ${pick(appearanceBuilds)} med ${pick(appearanceEyes)} ögon. Har ${pick(appearanceFeatures)}.`;
+        document.getElementById('npc-personality').value = pickN(personalityPool, 3).join(", ");
+        document.getElementById('npc-goal').value = pick(goalsPool);
+    }
+
+    async function loadNPCsFromCloud() {
+        try {
+            const response = await fetch(scriptURL + "?sheet=Invanare");
+            const data = await response.json();
+            savedNPCs = (data || []).slice(1).filter(row => row && row[0]).map(row => ({
+                name: row[0] || "", race: row[1] || "", job: row[2] || "",
+                appearance: row[3] || "", personality: row[4] || "", goal: row[5] || "", place: row[6] || ""
+            }));
+            renderNPCList();
+        } catch (e) { console.error("Kunde inte ladda invånare", e); }
+    }
+
+    async function saveNPCToCloud() {
+        const name = document.getElementById('npc-name').value;
+        if (!name) return alert("Skriv ett namn på invånaren!");
+
+        const n = {
+            name: name,
+            race: document.getElementById('npc-race').value,
+            job: document.getElementById('npc-job').value,
+            appearance: document.getElementById('npc-appearance').value,
+            personality: document.getElementById('npc-personality').value,
+            goal: document.getElementById('npc-goal').value,
+            place: document.getElementById('npc-place').value
+        };
+
+        const idx = parseInt(document.getElementById('npc-edit-index').value);
+        if (idx > -1) savedNPCs[idx] = n; else savedNPCs.push(n);
+
+        document.getElementById('npc-save-status').innerText = "📤 Sparar...";
+        const output = [["Namn","Ras","Yrke","Utseende","Personlighet","Mål","Plats"], ...savedNPCs.map(m => [m.name, m.race, m.job, m.appearance, m.personality, m.goal, m.place])];
+        await fetch(scriptURL + "?sheet=Invanare", { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
+
+        document.getElementById('npc-edit-index').value = "-1";
+        clearNPCForm();
+        renderNPCList();
+        document.getElementById('npc-save-status').innerText = "✅ Sparad";
+    }
+
+    async function deleteNPC() {
+        const idx = parseInt(document.getElementById('npc-edit-index').value);
+        if (!(idx > -1)) return alert("Klicka på en sparad invånare i listan nedan för att välja vilken som ska raderas.");
+        if (!confirm("Radera " + savedNPCs[idx].name + "?")) return;
+
+        savedNPCs.splice(idx, 1);
+        document.getElementById('npc-save-status').innerText = "📤 Raderar...";
+        const output = [["Namn","Ras","Yrke","Utseende","Personlighet","Mål","Plats"], ...savedNPCs.map(m => [m.name, m.race, m.job, m.appearance, m.personality, m.goal, m.place])];
+        await fetch(scriptURL + "?sheet=Invanare", { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
+
+        document.getElementById('npc-edit-index').value = "-1";
+        clearNPCForm();
+        renderNPCList();
+        document.getElementById('npc-save-status').innerText = "✅ Raderad";
+    }
+
+    function prepareEditNPC(i) {
+        const n = savedNPCs[i];
+        switchTab('npc');
+        setEditorOpen(true);
+        populateNPCPlaceDropdown();
+        document.getElementById('npc-name').value = n.name;
+        document.getElementById('npc-race').value = n.race;
+        document.getElementById('npc-job').value = n.job;
+        document.getElementById('npc-appearance').value = n.appearance;
+        document.getElementById('npc-personality').value = n.personality;
+        document.getElementById('npc-goal').value = n.goal;
+        document.getElementById('npc-place').value = n.place;
+        document.getElementById('npc-edit-index').value = i;
+    }
+
+    function renderNPCList() {
+        const container = document.getElementById('npc-list-items');
+        if (savedNPCs.length === 0) {
+            container.innerHTML = '<i style="padding:8px; display:block;">Inga invånare sparade än.</i>';
+            return;
+        }
+        container.innerHTML = savedNPCs.map((n, i) => `
+            <div class="npc-list-row" onclick="prepareEditNPC(${i})">
+                <b style="color:#2ecc71;">${n.name}</b> <span>(${n.race || '?'}, ${n.job || '?'})</span><br>
+                <span>📍 ${n.place || 'Ingen plats angiven'}</span>
+            </div>
+        `).join('');
+    }
+
     map.on('click', e => {
         if (!placingMode) return; // Vanliga klick på kartan gör ingenting längre
         currentCoords = [Math.round(e.latlng.lat), Math.round(e.latlng.lng)];
         cancelPlacingMode();
+        switchTab('place');
         setEditorOpen(true);
         document.getElementById('edit-index').value = "-1";
         document.getElementById('node-name').focus();
@@ -366,6 +553,7 @@
 
     function prepareEdit(i) {
         const m = savedData[i];
+        switchTab('place');
         setEditorOpen(true);
         document.getElementById('node-name').value = m.name;
         document.getElementById('node-pop').value = m.pop;
@@ -386,6 +574,7 @@
         map.closePopup();
     }
     loadFromCloud();
+    loadNPCsFromCloud();
 </script>
 </body>
 </html>
