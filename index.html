@@ -114,6 +114,7 @@
     <div id="map"></div>
 
     <button id="toggle-editor-btn" class="dm-only-btn" onclick="toggleEditorPanel()">◀ REDIGERA</button>
+    <button id="back-to-world-btn" style="display:none; position:absolute; top:15px; left:15px; z-index:1002; background:#2a4d53; color:#8eb0b7; border:2px solid #447a82; padding:10px 12px; cursor:pointer; font-size:13px; font-weight:bold; border-radius:5px;" onclick="closeCityMap()">⬅ Till världskartan</button>
 
     <div id="editor-panel" class="editor-hidden">
         <div class="panel-tabs">
@@ -280,9 +281,9 @@
 <script>
     const scriptURL = "https://script.google.com/macros/s/AKfycbzUaFvJSvqZI9eGP_I_zXMoPdQYp5uQEkUwRqW0ypKLtduXJyoRXIokLaD0-WqHmJqg/exec";
     var map = L.map('map', { crs: L.CRS.Simple, minZoom: -2, maxZoom: 2, attributionControl: false });
-    var bounds = [[0, 0], [2887, 3840]];
-    L.imageOverlay('VASTERHEIM.webp', bounds).addTo(map);
-    map.fitBounds(bounds);
+    var worldBounds = [[0, 0], [2887, 3840]];
+    var worldImageLayer = L.imageOverlay('VASTERHEIM.webp', worldBounds).addTo(map);
+    map.fitBounds(worldBounds);
 
     var isDM = false, savedData = [], activeFilter = 'all', currentCoords = null;
 
@@ -408,10 +409,12 @@
 
     // ---- NYTT: Byggnader, Byggnadstyper, familjejobb-sannolikhet, relationstyper ----
     function loadBuildingBank(byggnader, byggnadstyper, familjejobb, relationstyper) {
-        // Byggnader: Stad, Byggnadsnamn, Typ, Yrke, Ungefär antal invånare
+        // Byggnader: Stad, Byggnadsnamn, Typ, Yrke, Ungefär antal invånare, X, Y
         contentBank.buildings = byggnader.map(r => ({
             stad: r[0] || "", namn: r[1] || "", typ: r[2] || "", yrke: r[3] || "",
-            antal: parseInt(r[4]) || 1
+            antal: parseInt(r[4]) || 1,
+            x: (r[5] !== undefined && r[5] !== "") ? parseFloat(r[5]) : null,
+            y: (r[6] !== undefined && r[6] !== "") ? parseFloat(r[6]) : null
         })).filter(b => b.stad && b.namn);
 
         // Byggnadstyper: Typ, Vikt, Vanligt yrke, Minsta befolkning, Max normalt, Max storstad
@@ -429,6 +432,86 @@
 
         // Relationstyper: Relationstyp
         contentBank.relationTypes = relationstyper.map(r => r[0]).filter(Boolean);
+    }
+
+    // ============================================================
+    // NYTT: Stadskarta - klickbara byggnader inom en stad, visar
+    // vilka NPC:er som bor/jobbar där. Ingen bakgrundsbild ännu,
+    // bara utspridda punkter på en tom yta.
+    // ============================================================
+    var cityViewActive = false;
+    var currentCityName = null;
+    var CITY_CANVAS_SIZE = 1000;
+
+    function ensureBuildingCoords(cityName) {
+        let changed = false;
+        contentBank.buildings.filter(b => b.stad === cityName).forEach(b => {
+            if (b.x == null || b.y == null || isNaN(b.x) || isNaN(b.y)) {
+                b.x = Math.round(50 + Math.random() * (CITY_CANVAS_SIZE - 100));
+                b.y = Math.round(50 + Math.random() * (CITY_CANVAS_SIZE - 100));
+                changed = true;
+            }
+        });
+        return changed;
+    }
+
+    async function saveBuildingsToCloud() {
+        const BUILDING_HEADERS = ["Stad", "Byggnadsnamn", "Typ", "Yrke", "Ungefär antal invånare", "X", "Y"];
+        const output = [BUILDING_HEADERS, ...contentBank.buildings.map(b => [b.stad, b.namn, b.typ, b.yrke, b.antal, b.x, b.y])];
+        await fetch(scriptURL + "?sheet=Byggnader", { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
+    }
+
+    async function openCityMap(cityName) {
+        if (!contentBank.loaded) return alert("Innehållet laddas fortfarande - försök igen om en liten stund.");
+        const buildings = contentBank.buildings.filter(b => b.stad === cityName);
+        if (!buildings.length) return alert("Inga byggnader hittades för " + cityName + " än. Lägg till några i Byggnader-fliken, eller kör 'Generera befolkning' först.");
+
+        map.closePopup();
+        cityViewActive = true;
+        currentCityName = cityName;
+
+        map.removeLayer(worldImageLayer);
+        map.eachLayer(l => { if (l instanceof L.Marker) map.removeLayer(l); });
+
+        const needsSave = ensureBuildingCoords(cityName);
+        if (needsSave) await saveBuildingsToCloud();
+
+        const cityBounds = [[0, 0], [CITY_CANVAS_SIZE, CITY_CANVAS_SIZE]];
+        map.fitBounds(cityBounds);
+
+        document.getElementById('back-to-world-btn').style.display = 'block';
+        renderCityMarkers();
+    }
+
+    function closeCityMap() {
+        cityViewActive = false;
+        currentCityName = null;
+        map.eachLayer(l => { if (l instanceof L.Marker) map.removeLayer(l); });
+        if (!map.hasLayer(worldImageLayer)) worldImageLayer.addTo(map);
+        map.fitBounds(worldBounds);
+        document.getElementById('back-to-world-btn').style.display = 'none';
+        renderMarkers();
+    }
+
+    function renderCityMarkers() {
+        const buildings = contentBank.buildings.filter(b => b.stad === currentCityName);
+        buildings.forEach(b => {
+            const residents = savedNPCs.filter(n => n.place === currentCityName && n.building === b.namn);
+            const icon = L.divIcon({
+                className: '', html: `<div style="width:16px;height:16px;border-radius:50%;background:#f1c40f;border:2px solid #0b1d21;"></div>`,
+                iconSize: [16, 16], iconAnchor: [8, 8]
+            });
+            let content = `<div style="color:white;"><b style="color:#2ecc71; font-size:1.1em;">${b.namn}</b><br><span style="color:#8eb0b7; font-size:0.85em;">${b.typ}${b.yrke ? ' · ' + b.yrke : ''}</span>`;
+            if (residents.length) {
+                content += `<div style="margin-top:8px; border-top:1px solid #2a4d53; padding-top:6px;"><b>Invånare:</b><ul style="margin:4px 0 0 0; padding-left:18px;">`;
+                residents.forEach(r => { content += `<li>${r.name} <span style="color:#8eb0b7;">(${r.race}, ${r.job || 'inget yrke'})</span></li>`; });
+                content += `</ul></div>`;
+            } else {
+                content += `<p class="popup-desc">Ingen registrerad invånare här än.</p>`;
+            }
+            content += `</div>`;
+            L.marker([b.y, b.x], { icon }).addTo(map).bindPopup(content, { maxWidth: 260 });
+        });
     }
 
     function populateNPCDropdowns() {
@@ -607,6 +690,9 @@
             }
 
             let content = `<div style="color:white;"><b style="color:#2ecc71; font-size:1.2em;">${m.name}</b>${carousel}<div class="stat-grid"><div class="stat-item"><b>Pop</b>${m.pop||'-'}</div><div class="stat-item"><b>Ledare</b>${m.pol||'-'}</div><div class="stat-item"><b>Resurs</b>${m.res||'-'}</div><div class="stat-item"><b>Fara</b>${m.danger||'-'}</div><div class="stat-item" style="grid-column:span 2"><b>Profiler</b>${m.leaders||'-'}</div><div class="stat-item" style="grid-column:span 2"><b>Bekanta</b>${m.allies||'-'}</div></div><p class="popup-desc">${m.desc||''}</p>`;
+            if (['gold','blue','green'].includes(m.type)) {
+                content += `<button class="npc-gen-btn" style="width:100%; margin-top:8px; padding:8px; background:#2a4d53;" onclick="openCityMap('${m.name.replace(/'/g,"\\'")}')">🏙️ Öppna stadskarta</button>`;
+            }
             if(isDM) {
                 content += `<div class="dm-info-box"><b>DM INFO:</b> ${m.secret||''}</div><div class="popup-controls"><button class="btn-edit" onclick="prepareEdit(${i})">ÄNDRA</button><button class="btn-delete" onclick="deletePoint(${i})">RADERA</button></div>`;
                 if (['gold','blue','green'].includes(m.type)) {
@@ -943,7 +1029,7 @@
     }
 
     map.on('click', e => {
-        if (!placingMode) return; // Vanliga klick på kartan gör ingenting längre
+        if (!placingMode || cityViewActive) return; // Vanliga klick (och klick i stadsvyn) gör ingenting
         currentCoords = [Math.round(e.latlng.lat), Math.round(e.latlng.lng)];
         cancelPlacingMode();
         switchTab('place');
@@ -1139,8 +1225,8 @@
         await fetch(scriptURL + "?sheet=Invanare", { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
 
         if (newBuildings.length) {
-            const BUILDING_HEADERS = ["Stad", "Byggnadsnamn", "Typ", "Yrke", "Ungefär antal invånare"];
-            const buildingOutput = [BUILDING_HEADERS, ...contentBank.buildings.map(b => [b.stad, b.namn, b.typ, b.yrke, b.antal])];
+            const BUILDING_HEADERS = ["Stad", "Byggnadsnamn", "Typ", "Yrke", "Ungefär antal invånare", "X", "Y"];
+            const buildingOutput = [BUILDING_HEADERS, ...contentBank.buildings.map(b => [b.stad, b.namn, b.typ, b.yrke, b.antal, b.x != null ? b.x : "", b.y != null ? b.y : ""])];
             await fetch(scriptURL + "?sheet=Byggnader", { method: 'POST', mode: 'no-cors', body: JSON.stringify(buildingOutput) });
         }
 
