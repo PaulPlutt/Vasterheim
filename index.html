@@ -287,6 +287,12 @@
     const appearanceBuilds = ["smal", "kraftigt byggd", "muskulös", "spenslig", "undersätsig", "reslig", "böjd av ålder", "atletisk", "senig"];
     const appearanceEyes = ["stålgrå", "djupbruna", "isblå", "bärnstensfärgade", "gröna", "svarta som natten", "olikfärgade"];
     const appearanceFeatures = ["ett ärr över ena ögonbrynet", "tatueringar längs underarmarna", "gråsprängt hår", "ett brutet näsben som läkt snett", "fräknar över hela ansiktet", "en påfallande djup röst", "ovanligt långa fingrar", "ett saknat finger", "guldbrickor inflätade i skägget", "en käpp av mörkt trä", "solbränd hy", "ett konstant road uttryck"];
+    const hairColors = ["svart", "kolsvart", "mörkbrunt", "ljusbrunt", "mörkblont", "ljust blont", "rött", "rödblont", "grått", "silverfärgat", "vitt", "kopparrött"];
+    const raceHeightRanges = {
+        "Människa": [155, 195], "Alv": [150, 185], "Dvärg": [120, 145], "Halvling": [85, 120],
+        "Halvalv": [155, 188], "Halvork": [165, 205], "Drakfödd": [175, 210], "Tiefling": [160, 192],
+        "Gnom": [85, 110], "Ork": [175, 210]
+    };
 
     function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
     function pickN(arr, n) {
@@ -294,8 +300,10 @@
         for (let i = 0; i < n && copy.length; i++) out.push(copy.splice(Math.floor(Math.random() * copy.length), 1)[0]);
         return out;
     }
-    function generateAppearanceText() {
-        return `Är ${pick(appearanceBuilds)} med ${pick(appearanceEyes)} ögon. Har ${pick(appearanceFeatures)}.`;
+    function generateAppearanceText(ras) {
+        const range = raceHeightRanges[ras] || [150, 195];
+        const height = Math.floor(range[0] + Math.random() * (range[1] - range[0]));
+        return `${height} cm lång, ${pick(appearanceBuilds)} kroppsbyggnad, ${pick(hairColors)} hår och ${pick(appearanceEyes)} ögon. Har ${pick(appearanceFeatures)}.`;
     }
 
     // ============================================================
@@ -704,7 +712,8 @@
     function populateNPCPlaceDropdown() {
         const sel = document.getElementById('npc-place');
         const current = sel.value;
-        const sortedPlaces = [...savedData].sort((a, b) => a.name.localeCompare(b.name, 'sv'));
+        const settlements = savedData.filter(m => ['gold', 'blue', 'green'].includes(m.type));
+        const sortedPlaces = [...settlements].sort((a, b) => a.name.localeCompare(b.name, 'sv'));
         sel.innerHTML = '<option value="">– Ingen plats vald –</option>' + sortedPlaces.map(m => `<option value="${m.name}">${m.name}</option>`).join('');
         sel.value = current;
     }
@@ -734,7 +743,7 @@
         document.getElementById('npc-economy').value = ekonomi;
         document.getElementById('npc-personality').value = contentBank.personalityPool.length ? pickN(contentBank.personalityPool, 3).join(", ") : "";
         document.getElementById('npc-goal').value = contentBank.goalsPool.length ? pick(contentBank.goalsPool) : "";
-        document.getElementById('npc-appearance').value = generateAppearanceText();
+        document.getElementById('npc-appearance').value = generateAppearanceText(ras);
         document.getElementById('npc-str').value = stats.STR;
         document.getElementById('npc-dex').value = stats.DEX;
         document.getElementById('npc-kon').value = stats.KON;
