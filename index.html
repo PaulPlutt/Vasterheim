@@ -102,6 +102,7 @@
         <button class="filter-btn" onclick="toggleFilter('violet', this)">Magi</button>
         <button class="filter-btn" onclick="toggleFilter('orange', this)">Landmärke</button>
         <span id="cloud-status" style="font-size:10px; color:#8eb0b7; margin-left:10px;">Ansluter...</span>
+        <span id="content-status" style="font-size:10px; color:#8eb0b7; margin-left:10px;">📚 Laddar innehåll...</span>
     </div>
     <div>
         <button id="add-place-btn" class="dm-only-btn" onclick="togglePlacingMode()">+ Lägg till plats</button>
@@ -329,82 +330,99 @@
 
     const HYBRID_PARENTS = { "Halvalv": ["Alv", "Människa"], "Halvork": ["Ork", "Människa"] };
 
-    async function fetchSheet(name) {
-        try {
-            const res = await fetch(scriptURL + "?sheet=" + encodeURIComponent(name));
-            const data = await res.json();
-            return (data || []).slice(1).filter(r => r && r.some(v => v !== "" && v !== null && v !== undefined));
-        } catch (e) { console.error("Kunde inte läsa " + name, e); return []; }
+    // ---- NYTT: hämta flera flikar i ETT anrop (mycket snabbare än 14 separata) ----
+    async function fetchMultipleSheets(names) {
+        const empty = {}; names.forEach(n => empty[n] = []);
+        const res = await fetch(scriptURL + "?sheets=" + names.map(encodeURIComponent).join(","));
+        const data = await res.json();
+        const result = {};
+        names.forEach(name => {
+            const rows = data[name] || [];
+            result[name] = rows.slice(1).filter(r => r && r.some(v => v !== "" && v !== null && v !== undefined));
+        });
+        return result;
     }
 
     async function loadContentBank() {
+        const contentStatus = document.getElementById('content-status');
         const genBtn = document.querySelector('.npc-gen-btn');
         if (genBtn) { genBtn.disabled = true; genBtn.innerText = "⏳ Laddar innehåll..."; }
+        if (contentStatus) contentStatus.innerText = "📚 Laddar innehåll...";
 
-        const [fornamn, efternamn, raser, yrken, personlighet, mal, religioner, ekonomi, statsInst, grundstats, byggnader, byggnadstyper, familjejobb, relationstyper] = await Promise.all([
-            fetchSheet("Fornamn"), fetchSheet("Efternamn"), fetchSheet("Raser"), fetchSheet("Yrken"),
-            fetchSheet("Personlighetsdrag"), fetchSheet("Mal"), fetchSheet("Religioner"),
-            fetchSheet("EkonomiskStatus"), fetchSheet("StatsInstallningar"), fetchSheet("GrundstatsPerRas"),
-            fetchSheet("Byggnader"), fetchSheet("Byggnadstyper"), fetchSheet("ByggnadstyperFamiljejobb"), fetchSheet("Relationstyper")
-        ]);
+        try {
+            const sheetNames = ["Fornamn","Efternamn","Raser","Yrken","Personlighetsdrag","Mal","Religioner",
+                "EkonomiskStatus","StatsInstallningar","GrundstatsPerRas","Byggnader","Byggnadstyper",
+                "ByggnadstyperFamiljejobb","Relationstyper"];
+            const sheets = await fetchMultipleSheets(sheetNames);
+            const fornamn = sheets["Fornamn"], efternamn = sheets["Efternamn"], raser = sheets["Raser"], yrken = sheets["Yrken"],
+                  personlighet = sheets["Personlighetsdrag"], mal = sheets["Mal"], religioner = sheets["Religioner"],
+                  ekonomi = sheets["EkonomiskStatus"], statsInst = sheets["StatsInstallningar"], grundstats = sheets["GrundstatsPerRas"],
+                  byggnader = sheets["Byggnader"], byggnadstyper = sheets["Byggnadstyper"], familjejobb = sheets["ByggnadstyperFamiljejobb"],
+                  relationstyper = sheets["Relationstyper"];
 
-        fornamn.forEach(row => {
-            const [namn, kon, ras] = row;
-            if (!namn || !ras) return;
-            if (!contentBank.namesByRaceGender[ras]) contentBank.namesByRaceGender[ras] = {};
-            if (!contentBank.namesByRaceGender[ras][kon]) contentBank.namesByRaceGender[ras][kon] = [];
-            contentBank.namesByRaceGender[ras][kon].push(namn);
-        });
+            fornamn.forEach(row => {
+                const [namn, kon, ras] = row;
+                if (!namn || !ras) return;
+                if (!contentBank.namesByRaceGender[ras]) contentBank.namesByRaceGender[ras] = {};
+                if (!contentBank.namesByRaceGender[ras][kon]) contentBank.namesByRaceGender[ras][kon] = [];
+                contentBank.namesByRaceGender[ras][kon].push(namn);
+            });
 
-        efternamn.forEach(row => {
-            const [namn, ras] = row;
-            if (!namn || !ras) return;
-            if (!contentBank.surnamesByRace[ras]) contentBank.surnamesByRace[ras] = [];
-            contentBank.surnamesByRace[ras].push(namn);
-        });
+            efternamn.forEach(row => {
+                const [namn, ras] = row;
+                if (!namn || !ras) return;
+                if (!contentBank.surnamesByRace[ras]) contentBank.surnamesByRace[ras] = [];
+                contentBank.surnamesByRace[ras].push(namn);
+            });
 
-        raser.forEach(row => {
-            const [ras, vuxenFran, livslangd, andelBarn] = row;
-            if (!ras) return;
-            contentBank.racesInfo[ras] = {
-                vuxenFran: parseFloat(vuxenFran) || 18,
-                livslangd: parseFloat(livslangd) || 80,
-                andelBarn: parseFloat(andelBarn) || 15
-            };
-        });
+            raser.forEach(row => {
+                const [ras, vuxenFran, livslangd, andelBarn] = row;
+                if (!ras) return;
+                contentBank.racesInfo[ras] = {
+                    vuxenFran: parseFloat(vuxenFran) || 18,
+                    livslangd: parseFloat(livslangd) || 80,
+                    andelBarn: parseFloat(andelBarn) || 15
+                };
+            });
 
-        contentBank.yrken = yrken.map(r => r[0]).filter(Boolean);
-        contentBank.personalityPool = personlighet.map(r => r[0]).filter(Boolean);
-        contentBank.goalsPool = mal.map(r => r[0]).filter(Boolean);
-        contentBank.religions = religioner.map(r => ({ namn: r[0], beskrivning: r[1] })).filter(r => r.namn);
-        contentBank.econStatuses = ekonomi.map(r => ({ niva: r[0], vikt: parseFloat(r[1]) || 1 })).filter(r => r.niva);
+            contentBank.yrken = yrken.map(r => r[0]).filter(Boolean);
+            contentBank.personalityPool = personlighet.map(r => r[0]).filter(Boolean);
+            contentBank.goalsPool = mal.map(r => r[0]).filter(Boolean);
+            contentBank.religions = religioner.map(r => ({ namn: r[0], beskrivning: r[1] })).filter(r => r.namn);
+            contentBank.econStatuses = ekonomi.map(r => ({ niva: r[0], vikt: parseFloat(r[1]) || 1 })).filter(r => r.niva);
 
-        statsInst.forEach(row => {
-            const [namn, varde] = row;
-            if (!namn) return;
-            const v = parseFloat(varde);
-            if (isNaN(v)) return;
-            const key = String(namn).toLowerCase();
-            if (key.includes("min")) contentBank.statsSettings.min = v;
-            else if (key.includes("max")) contentBank.statsSettings.max = v;
-            else if (key.includes("baslinje")) contentBank.statsSettings.baseline = v;
-            else if (key.includes("variation")) contentBank.statsSettings.variation = v;
-        });
+            statsInst.forEach(row => {
+                const [namn, varde] = row;
+                if (!namn) return;
+                const v = parseFloat(varde);
+                if (isNaN(v)) return;
+                const key = String(namn).toLowerCase();
+                if (key.includes("min")) contentBank.statsSettings.min = v;
+                else if (key.includes("max")) contentBank.statsSettings.max = v;
+                else if (key.includes("baslinje")) contentBank.statsSettings.baseline = v;
+                else if (key.includes("variation")) contentBank.statsSettings.variation = v;
+            });
 
-        grundstats.forEach(row => {
-            const [ras, str, dex, kon, intt, vis, cha] = row;
-            if (!ras) return;
-            contentBank.raceStatMods[ras] = {
-                STR: parseFloat(str) || 0, DEX: parseFloat(dex) || 0, KON: parseFloat(kon) || 0,
-                INT: parseFloat(intt) || 0, VIS: parseFloat(vis) || 0, CHA: parseFloat(cha) || 0
-            };
-        });
+            grundstats.forEach(row => {
+                const [ras, str, dex, kon, intt, vis, cha] = row;
+                if (!ras) return;
+                contentBank.raceStatMods[ras] = {
+                    STR: parseFloat(str) || 0, DEX: parseFloat(dex) || 0, KON: parseFloat(kon) || 0,
+                    INT: parseFloat(intt) || 0, VIS: parseFloat(vis) || 0, CHA: parseFloat(cha) || 0
+                };
+            });
 
-        loadBuildingBank(byggnader, byggnadstyper, familjejobb, relationstyper);
+            loadBuildingBank(byggnader, byggnadstyper, familjejobb, relationstyper);
 
-        contentBank.loaded = true;
-        populateNPCDropdowns();
-        if (genBtn) { genBtn.disabled = false; genBtn.innerText = "🎲 SLUMPA ALLT"; }
+            contentBank.loaded = true;
+            populateNPCDropdowns();
+            if (genBtn) { genBtn.disabled = false; genBtn.innerText = "🎲 SLUMPA ALLT"; }
+            if (contentStatus) contentStatus.innerText = "✅ Innehåll redo";
+        } catch (e) {
+            console.error("Fel vid laddning av innehållsbank", e);
+            if (contentStatus) contentStatus.innerText = "❌ Fel vid laddning - ladda om sidan";
+            if (genBtn) { genBtn.disabled = false; genBtn.innerText = "🎲 SLUMPA ALLT"; }
+        }
     }
 
     // ---- NYTT: Byggnader, Byggnadstyper, familjejobb-sannolikhet, relationstyper ----
