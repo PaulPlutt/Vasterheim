@@ -217,8 +217,11 @@
                 </div>
             </div>
             <div class="editor-row">
-                <div class="input-group"><label>Plats</label>
+                <div class="input-group"><label>Plats (stad/by)</label>
                     <select id="npc-place"><option value="">– Ingen plats vald –</option></select>
+                </div>
+                <div class="input-group"><label>Byggnad</label>
+                    <select id="npc-building"><option value="">– Välj plats först –</option></select>
                 </div>
             </div>
             <div class="editor-row">
@@ -247,6 +250,10 @@
             <div class="editor-row npc-derived-row">
                 <div class="input-group"><label>AC (auto, ändra vid behov)</label><input type="number" id="npc-ac"></div>
                 <div class="input-group"><label>HP (auto, ändra vid behov)</label><input type="number" id="npc-hp"></div>
+            </div>
+
+            <div class="editor-row">
+                <div class="input-group" style="flex:2;"><label>Relationer</label><textarea id="npc-relations" rows="2" placeholder="t.ex. Dotter till Ylva Guldgrävare, Vän: Gregg Handlare"></textarea></div>
             </div>
 
             <div class="editor-row">
@@ -315,6 +322,7 @@
         namesByRaceGender: {}, surnamesByRace: {}, racesInfo: {}, raceStatMods: {},
         yrken: [], personalityPool: [], goalsPool: [], religions: [], econStatuses: [],
         statsSettings: { min: 3, max: 18, baseline: 10, variation: 3 },
+        buildings: [], buildingTypes: [], familyJobChance: {}, relationTypes: [],
         loaded: false
     };
 
@@ -332,10 +340,11 @@
         const genBtn = document.querySelector('.npc-gen-btn');
         if (genBtn) { genBtn.disabled = true; genBtn.innerText = "⏳ Laddar innehåll..."; }
 
-        const [fornamn, efternamn, raser, yrken, personlighet, mal, religioner, ekonomi, statsInst, grundstats] = await Promise.all([
+        const [fornamn, efternamn, raser, yrken, personlighet, mal, religioner, ekonomi, statsInst, grundstats, byggnader, byggnadstyper, familjejobb, relationstyper] = await Promise.all([
             fetchSheet("Fornamn"), fetchSheet("Efternamn"), fetchSheet("Raser"), fetchSheet("Yrken"),
             fetchSheet("Personlighetsdrag"), fetchSheet("Mal"), fetchSheet("Religioner"),
-            fetchSheet("EkonomiskStatus"), fetchSheet("StatsInstallningar"), fetchSheet("GrundstatsPerRas")
+            fetchSheet("EkonomiskStatus"), fetchSheet("StatsInstallningar"), fetchSheet("GrundstatsPerRas"),
+            fetchSheet("Byggnader"), fetchSheet("Byggnadstyper"), fetchSheet("ByggnadstyperFamiljejobb"), fetchSheet("Relationstyper")
         ]);
 
         fornamn.forEach(row => {
@@ -390,9 +399,36 @@
             };
         });
 
+        loadBuildingBank(byggnader, byggnadstyper, familjejobb, relationstyper);
+
         contentBank.loaded = true;
         populateNPCDropdowns();
         if (genBtn) { genBtn.disabled = false; genBtn.innerText = "🎲 SLUMPA ALLT"; }
+    }
+
+    // ---- NYTT: Byggnader, Byggnadstyper, familjejobb-sannolikhet, relationstyper ----
+    function loadBuildingBank(byggnader, byggnadstyper, familjejobb, relationstyper) {
+        // Byggnader: Stad, Byggnadsnamn, Typ, Yrke, Ungefär antal invånare
+        contentBank.buildings = byggnader.map(r => ({
+            stad: r[0] || "", namn: r[1] || "", typ: r[2] || "", yrke: r[3] || "",
+            antal: parseInt(r[4]) || 1
+        })).filter(b => b.stad && b.namn);
+
+        // Byggnadstyper: Typ, Vikt, Vanligt yrke, Minsta befolkning, Max normalt, Max storstad
+        contentBank.buildingTypes = byggnadstyper.map(r => ({
+            typ: r[0] || "", vikt: parseFloat(r[1]) || 1, yrke: r[2] || "",
+            minPop: parseFloat(r[3]) || 0, maxNormal: r[4] !== "" ? parseFloat(r[4]) : null,
+            maxStor: r[5] !== "" ? parseFloat(r[5]) : null
+        })).filter(t => t.typ);
+
+        // ByggnadstyperFamiljejobb: Typ, % Familjen jobbar i företaget
+        contentBank.familyJobChance = {};
+        familjejobb.forEach(r => {
+            if (r[0]) contentBank.familyJobChance[r[0]] = parseFloat(r[1]) || 30;
+        });
+
+        // Relationstyper: Relationstyp
+        contentBank.relationTypes = relationstyper.map(r => r[0]).filter(Boolean);
     }
 
     function populateNPCDropdowns() {
@@ -571,7 +607,12 @@
             }
 
             let content = `<div style="color:white;"><b style="color:#2ecc71; font-size:1.2em;">${m.name}</b>${carousel}<div class="stat-grid"><div class="stat-item"><b>Pop</b>${m.pop||'-'}</div><div class="stat-item"><b>Ledare</b>${m.pol||'-'}</div><div class="stat-item"><b>Resurs</b>${m.res||'-'}</div><div class="stat-item"><b>Fara</b>${m.danger||'-'}</div><div class="stat-item" style="grid-column:span 2"><b>Profiler</b>${m.leaders||'-'}</div><div class="stat-item" style="grid-column:span 2"><b>Bekanta</b>${m.allies||'-'}</div></div><p class="popup-desc">${m.desc||''}</p>`;
-            if(isDM) content += `<div class="dm-info-box"><b>DM INFO:</b> ${m.secret||''}</div><div class="popup-controls"><button class="btn-edit" onclick="prepareEdit(${i})">ÄNDRA</button><button class="btn-delete" onclick="deletePoint(${i})">RADERA</button></div>`;
+            if(isDM) {
+                content += `<div class="dm-info-box"><b>DM INFO:</b> ${m.secret||''}</div><div class="popup-controls"><button class="btn-edit" onclick="prepareEdit(${i})">ÄNDRA</button><button class="btn-delete" onclick="deletePoint(${i})">RADERA</button></div>`;
+                if (['gold','blue','green'].includes(m.type)) {
+                    content += `<button class="npc-gen-btn" style="width:100%; margin-top:8px; padding:8px;" onclick="generatePopulation('${m.name.replace(/'/g,"\\'")}')">🏘️ Generera befolkning</button>`;
+                }
+            }
             L.marker(m.coords, {icon: getIcon(m.type)}).addTo(map).bindPopup(content, {maxWidth: 260});
         });
     }
@@ -697,8 +738,9 @@
     function clearNPCForm() {
         ['npc-name','npc-gender','npc-race','npc-age','npc-job','npc-appearance','npc-personality',
          'npc-religion','npc-economy','npc-goal','npc-str','npc-dex','npc-kon','npc-int','npc-vis','npc-cha',
-         'npc-ac','npc-hp','npc-dm-notes','npc-player-notes'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
+         'npc-ac','npc-hp','npc-relations','npc-dm-notes','npc-player-notes'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
         document.getElementById('npc-place').value = "";
+        populateNPCBuildingDropdown("");
     }
 
     // ---- NYTT: byte av ras uppdaterar automatiskt åldern till nåt rimligt för den rasen ----
@@ -716,7 +758,25 @@
         const sortedPlaces = [...settlements].sort((a, b) => a.name.localeCompare(b.name, 'sv'));
         sel.innerHTML = '<option value="">– Ingen plats vald –</option>' + sortedPlaces.map(m => `<option value="${m.name}">${m.name}</option>`).join('');
         sel.value = current;
+        populateNPCBuildingDropdown(sel.value);
     }
+
+    function populateNPCBuildingDropdown(placeName) {
+        const sel = document.getElementById('npc-building');
+        const current = sel.value;
+        if (!placeName) {
+            sel.innerHTML = '<option value="">– Välj plats först –</option>';
+            return;
+        }
+        const buildings = contentBank.buildings.filter(b => b.stad === placeName)
+            .sort((a, b) => a.namn.localeCompare(b.namn, 'sv'));
+        sel.innerHTML = '<option value="">– Ingen byggnad vald –</option>' + buildings.map(b => `<option value="${b.namn}">${b.namn} (${b.typ})</option>`).join('');
+        sel.value = current;
+    }
+
+    document.getElementById('npc-place').addEventListener('change', function () {
+        populateNPCBuildingDropdown(this.value);
+    });
 
     function randomizeNPC() {
         if (!contentBank.loaded) return alert("Innehållet laddas fortfarande - vänta ett par sekunder och försök igen.");
@@ -754,11 +814,11 @@
         document.getElementById('npc-hp').value = derived.hp;
     }
 
-    const NPC_HEADERS = ["Namn","Kön","Ras","Ålder","Yrke","Utseende","Personlighet","Religion","EkonomiskStatus","Mål","STR","DEX","KON","INT","VIS","CHA","AC","HP","Plats","DM_Anteckningar","Spelar_Anteckningar"];
+    const NPC_HEADERS = ["Namn","Kön","Ras","Ålder","Yrke","Utseende","Personlighet","Religion","EkonomiskStatus","Mål","STR","DEX","KON","INT","VIS","CHA","AC","HP","Plats","Byggnad","Relationer","DM_Anteckningar","Spelar_Anteckningar"];
 
     function npcToRow(n) {
         return [n.name, n.gender, n.race, n.age, n.job, n.appearance, n.personality, n.religion, n.economy, n.goal,
-                n.str, n.dex, n.kon, n.int, n.vis, n.cha, n.ac, n.hp, n.place, n.dmNotes, n.playerNotes];
+                n.str, n.dex, n.kon, n.int, n.vis, n.cha, n.ac, n.hp, n.place, n.building, n.relations, n.dmNotes, n.playerNotes];
     }
 
     async function loadNPCsFromCloud() {
@@ -770,7 +830,7 @@
                 appearance: row[5]||"", personality: row[6]||"", religion: row[7]||"", economy: row[8]||"",
                 goal: row[9]||"", str: row[10]||"", dex: row[11]||"", kon: row[12]||"", int: row[13]||"",
                 vis: row[14]||"", cha: row[15]||"", ac: row[16]||"", hp: row[17]||"", place: row[18]||"",
-                dmNotes: row[19]||"", playerNotes: row[20]||""
+                building: row[19]||"", relations: row[20]||"", dmNotes: row[21]||"", playerNotes: row[22]||""
             }));
             renderNPCList();
         } catch (e) { console.error("Kunde inte ladda invånare", e); }
@@ -800,6 +860,8 @@
             ac: document.getElementById('npc-ac').value,
             hp: document.getElementById('npc-hp').value,
             place: document.getElementById('npc-place').value,
+            building: document.getElementById('npc-building').value,
+            relations: document.getElementById('npc-relations').value,
             dmNotes: document.getElementById('npc-dm-notes').value,
             playerNotes: document.getElementById('npc-player-notes').value
         };
@@ -858,6 +920,9 @@
         document.getElementById('npc-ac').value = n.ac;
         document.getElementById('npc-hp').value = n.hp;
         document.getElementById('npc-place').value = n.place;
+        populateNPCBuildingDropdown(n.place);
+        document.getElementById('npc-building').value = n.building;
+        document.getElementById('npc-relations').value = n.relations;
         document.getElementById('npc-dm-notes').value = n.dmNotes;
         document.getElementById('npc-player-notes').value = n.playerNotes;
         document.getElementById('npc-edit-index').value = i;
@@ -872,7 +937,7 @@
         container.innerHTML = savedNPCs.map((n, i) => `
             <div class="npc-list-row" onclick="prepareEditNPC(${i})">
                 <b style="color:#2ecc71;">${n.name}</b> <span>(${n.race || '?'}, ${n.age || '?'} år, ${n.job || '?'})</span><br>
-                <span>📍 ${n.place || 'Ingen plats angiven'}</span>
+                <span>📍 ${n.building ? n.building + ', ' : ''}${n.place || 'Ingen plats angiven'}</span>
             </div>
         `).join('');
     }
@@ -909,6 +974,122 @@
         currentCoords = m.coords;
         map.closePopup();
     }
+
+    // ============================================================
+    // NYTT: Befolkningsgenerator. Fyller en stads byggnader med
+    // hela hushåll (ägare + familj) och kopplar ihop relationer,
+    // baserat på Byggnader/Byggnadstyper/ByggnadstyperFamiljejobb.
+    // ============================================================
+    async function generatePopulation(cityName) {
+        if (!contentBank.loaded) return alert("Innehållet laddas fortfarande - försök igen om en liten stund.");
+        const buildings = contentBank.buildings.filter(b => b.stad === cityName);
+        if (!buildings.length) return alert("Inga byggnader hittades för " + cityName + " i Byggnader-fliken. Lägg till några där först.");
+
+        if (!confirm(`Generera befolkning för ${cityName} baserat på ${buildings.length} byggnader i Byggnader-fliken?\n\nDetta LÄGGER TILL nya invånare (skriver inte över befintliga).`)) return;
+
+        const newNPCs = [];
+
+        buildings.forEach(b => {
+            const raceForHousehold = pick(Object.keys(contentBank.racesInfo));
+            const count = Math.max(1, b.antal || 1);
+            const householdMembers = []; // index i newNPCs för denna byggnads invånare
+
+            for (let i = 0; i < count; i++) {
+                const ras = raceForHousehold;
+                const info = contentBank.racesInfo[ras];
+                let isChild = false;
+                let yrke = "";
+
+                if (i === 0 && b.yrke) {
+                    yrke = b.yrke; // ägaren får byggnadens angivna yrke
+                } else {
+                    isChild = info && Math.random() * 100 < info.andelBarn;
+                    if (!isChild) {
+                        if (b.yrke) {
+                            const chance = contentBank.familyJobChance[b.typ] != null ? contentBank.familyJobChance[b.typ] : 30;
+                            yrke = (Math.random() * 100 < chance) ? b.yrke : (contentBank.yrken.length ? pick(contentBank.yrken) : "");
+                        } else {
+                            yrke = contentBank.yrken.length ? pick(contentBank.yrken) : "";
+                        }
+                    }
+                }
+
+                const gender = pickGenderForRace(ras);
+                const fornamn = pickFirstName(ras, gender);
+                const efternamn = pickSurname(ras);
+                const alder = isChild
+                    ? Math.max(1, Math.floor(Math.random() * ((info && info.vuxenFran) || 18)))
+                    : generateAge(ras);
+                const stats = generateStats(ras);
+                const derived = deriveDerivedStats(stats, yrke);
+                const religion = contentBank.religions.length ? pick(contentBank.religions).namn : "";
+                const ekonomi = contentBank.econStatuses.length ? weightedPick(contentBank.econStatuses, e => e.vikt).niva : "";
+
+                newNPCs.push({
+                    name: (fornamn + " " + efternamn).trim(), gender, race: ras, age: alder, job: yrke,
+                    appearance: generateAppearanceText(ras),
+                    personality: contentBank.personalityPool.length ? pickN(contentBank.personalityPool, 3).join(", ") : "",
+                    religion, economy: ekonomi,
+                    goal: contentBank.goalsPool.length ? pick(contentBank.goalsPool) : "",
+                    str: stats.STR, dex: stats.DEX, kon: stats.KON, int: stats.INT, vis: stats.VIS, cha: stats.CHA,
+                    ac: derived.ac, hp: derived.hp,
+                    place: cityName, building: b.namn, relations: "", dmNotes: "", playerNotes: "",
+                    _isChild: isChild
+                });
+                householdMembers.push(newNPCs.length - 1);
+            }
+
+            // ---- Relationer inom hushållet ----
+            if (householdMembers.length > 1) {
+                const ownerIdx = householdMembers[0];
+                const rest = householdMembers.slice(1);
+                let partnerIdx = null;
+                rest.forEach((idx, pos) => {
+                    const person = newNPCs[idx];
+                    const owner = newNPCs[ownerIdx];
+                    if (person._isChild) {
+                        appendRelation(person, `Barn till ${owner.name}`);
+                        appendRelation(owner, `Förälder till ${person.name}`);
+                    } else if (partnerIdx === null) {
+                        partnerIdx = idx;
+                        appendRelation(person, `Partner till ${owner.name}`);
+                        appendRelation(owner, `Partner till ${person.name}`);
+                    } else {
+                        appendRelation(person, `Syskon till ${owner.name}`);
+                        appendRelation(owner, `Syskon till ${person.name}`);
+                    }
+                });
+            }
+        });
+
+        // ---- Ett fåtal slumpade relationer MELLAN olika byggnader (vänner/rivaler) ----
+        if (contentBank.relationTypes.length && newNPCs.length > 3) {
+            const extraLinks = Math.min(Math.floor(newNPCs.length / 4), 15);
+            for (let i = 0; i < extraLinks; i++) {
+                const a = Math.floor(Math.random() * newNPCs.length);
+                const b2 = Math.floor(Math.random() * newNPCs.length);
+                if (a === b2 || newNPCs[a].building === newNPCs[b2].building) continue;
+                const relType = pick(contentBank.relationTypes);
+                appendRelation(newNPCs[a], `${relType}: ${newNPCs[b2].name}`);
+            }
+        }
+
+        newNPCs.forEach(n => delete n._isChild);
+        savedNPCs = savedNPCs.concat(newNPCs);
+
+        document.getElementById('cloud-status').innerText = "📤 Sparar befolkning...";
+        const output = [NPC_HEADERS, ...savedNPCs.map(npcToRow)];
+        await fetch(scriptURL + "?sheet=Invanare", { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
+        document.getElementById('cloud-status').innerText = "✅ Klart";
+
+        renderNPCList();
+        alert(`Klart! ${newNPCs.length} invånare skapade i ${cityName}.`);
+    }
+
+    function appendRelation(npc, text) {
+        npc.relations = npc.relations ? (npc.relations + "; " + text) : text;
+    }
+
     loadFromCloud();
     loadNPCsFromCloud();
     loadContentBank();
