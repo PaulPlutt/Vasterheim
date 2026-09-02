@@ -204,7 +204,9 @@
                 <div class="input-group"><label>Ålder</label><input type="number" id="npc-age" min="0"></div>
             </div>
             <div class="editor-row">
-                <div class="input-group"><label>Yrke</label><input type="text" id="npc-job"></div>
+                <div class="input-group"><label>Yrke</label>
+                    <select id="npc-job"><option value="">– Laddar yrken... –</option></select>
+                </div>
             </div>
             <div class="editor-row">
                 <div class="input-group"><label>Religion</label>
@@ -394,13 +396,20 @@
 
         const relSel = document.getElementById('npc-religion');
         const currentRel = relSel.value;
-        relSel.innerHTML = '<option value="">– Ingen angiven –</option>' + contentBank.religions.map(r => `<option value="${r.namn}">${r.namn}</option>`).join('');
+        const sortedReligions = [...contentBank.religions].sort((a, b) => a.namn.localeCompare(b.namn, 'sv'));
+        relSel.innerHTML = '<option value="">– Ingen angiven –</option>' + sortedReligions.map(r => `<option value="${r.namn}">${r.namn}</option>`).join('');
         relSel.value = currentRel;
 
         const econSel = document.getElementById('npc-economy');
         const currentEcon = econSel.value;
         econSel.innerHTML = '<option value="">– Ingen angiven –</option>' + contentBank.econStatuses.map(e => `<option value="${e.niva}">${e.niva}</option>`).join('');
         econSel.value = currentEcon;
+
+        const jobSel = document.getElementById('npc-job');
+        const currentJob = jobSel.value;
+        const sortedJobs = [...contentBank.yrken].sort((a, b) => a.localeCompare(b, 'sv'));
+        jobSel.innerHTML = '<option value="">– Välj yrke –</option>' + sortedJobs.map(y => `<option value="${y}">${y}</option>`).join('');
+        jobSel.value = currentJob;
     }
 
     // ---- Namn/ras-slump med arv för blandraser (Halvalv/Halvork) ----
@@ -457,12 +466,25 @@
         });
         return stats;
     }
-    const COMBAT_JOBS = ["Vakt", "Soldat", "Kapten", "Krigare", "Sheriff", "Äventyrare", "Stadsvakt", "Fängelsevakt"];
+    const COMBAT_JOB_KEYWORDS = ["krigare","soldat","kapten","riddare","äventyrare","sheriff","kämpe","general","officer","bandit","ligist","livvakt","försvarare","gladiator","vakt"];
+    const PHYSICAL_JOB_KEYWORDS = ["smed","bonde","jägare","fiskare","snickare","murare","gruvarbetare","timmerhuggare","slaktare","garvare","stenhuggare","hamnarbetare","tjuv","spion","sjöman","flottare","färjeman","brunnsgrävare","sadelmakare","tunnbindare","krukmakare","vagnmakare"];
+
+    function getHPTier(yrke) {
+        const y = (yrke || "").toLowerCase();
+        if (COMBAT_JOB_KEYWORDS.some(k => y.includes(k))) return "hog";
+        if (PHYSICAL_JOB_KEYWORDS.some(k => y.includes(k))) return "medel";
+        return "lag";
+    }
     function deriveDerivedStats(stats, yrke) {
         const ac = 10 + abilityMod(stats.DEX);
-        let hp = 4 + abilityMod(stats.KON);
-        if (COMBAT_JOBS.includes(yrke)) hp += 6;
-        return { ac, hp: Math.max(1, hp) };
+        const tier = getHPTier(yrke);
+        let base;
+        if (tier === "hog") base = 60 + Math.floor(Math.random() * 41);      // 60-100
+        else if (tier === "medel") base = 25 + Math.floor(Math.random() * 31); // 25-55
+        else base = 10 + Math.floor(Math.random() * 26);                     // 10-35
+        let hp = base + abilityMod(stats.KON);
+        hp = Math.max(10, Math.min(100, hp));
+        return { ac, hp };
     }
     function weightedPick(items, weightFn) {
         const total = items.reduce((s, i) => s + weightFn(i), 0);
@@ -671,10 +693,19 @@
         document.getElementById('npc-place').value = "";
     }
 
+    // ---- NYTT: byte av ras uppdaterar automatiskt åldern till nåt rimligt för den rasen ----
+    document.getElementById('npc-race').addEventListener('change', function () {
+        const ras = this.value;
+        if (ras && contentBank.racesInfo[ras]) {
+            document.getElementById('npc-age').value = generateAge(ras);
+        }
+    });
+
     function populateNPCPlaceDropdown() {
         const sel = document.getElementById('npc-place');
         const current = sel.value;
-        sel.innerHTML = '<option value="">– Ingen plats vald –</option>' + savedData.map(m => `<option value="${m.name}">${m.name}</option>`).join('');
+        const sortedPlaces = [...savedData].sort((a, b) => a.name.localeCompare(b.name, 'sv'));
+        sel.innerHTML = '<option value="">– Ingen plats vald –</option>' + sortedPlaces.map(m => `<option value="${m.name}">${m.name}</option>`).join('');
         sel.value = current;
     }
 
