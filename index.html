@@ -982,15 +982,72 @@
     // ============================================================
     async function generatePopulation(cityName) {
         if (!contentBank.loaded) return alert("Innehållet laddas fortfarande - försök igen om en liten stund.");
-        const buildings = contentBank.buildings.filter(b => b.stad === cityName);
-        if (!buildings.length) return alert("Inga byggnader hittades för " + cityName + " i Byggnader-fliken. Lägg till några där först.");
+        const city = savedData.find(m => m.name === cityName);
+        const cityPop = city ? (parseInt(city.pop) || 0) : 0;
 
-        if (!confirm(`Generera befolkning för ${cityName} baserat på ${buildings.length} byggnader i Byggnader-fliken?\n\nDetta LÄGGER TILL nya invånare (skriver inte över befintliga).`)) return;
+        const raceNames = Object.keys(contentBank.racesInfo);
+        const dominantRace = prompt(
+            `Vilken ras befolkar ${cityName} till störst del?\n\nTillgängliga raser: ${raceNames.join(", ")}\n\n(Lämna tomt för helt jämn fördelning mellan alla raser.)`,
+            raceNames.includes("Människa") ? "Människa" : (raceNames[0] || "")
+        );
+        let dominantPct = 0;
+        if (dominantRace && raceNames.includes(dominantRace)) {
+            const pctStr = prompt(`Hur stor andel av hushållen ska vara ${dominantRace}? (0-100)`, "60");
+            dominantPct = Math.max(0, Math.min(100, parseInt(pctStr) || 0));
+        }
+        function pickHouseholdRace() {
+            if (dominantRace && Math.random() * 100 < dominantPct) return dominantRace;
+            const others = raceNames.filter(r => r !== dominantRace);
+            return pick(others.length ? others : raceNames);
+        }
+
+        const extraStr = prompt(
+            `${cityName} har redan ${contentBank.buildings.filter(b => b.stad === cityName).length} byggnader i Byggnader-fliken.\n\n` +
+            `Hur många NYA byggnader vill du att jag genererar automatiskt (med vikt/befolkningsgränser från Byggnadstyper-fliken)?\n\n` +
+            `Tips: en stad med några tusen invånare räcker det ofta med 30-80 byggnader för att kännas full - vi simulerar inte varje enskild invånare, bara de som faktiskt kan bli relevanta.`,
+            "30"
+        );
+        if (extraStr === null) return;
+        const extraCount = Math.max(0, Math.min(150, parseInt(extraStr) || 0));
+
+        const existingBuildings = contentBank.buildings.filter(b => b.stad === cityName);
+        const newBuildings = [];
+        if (extraCount > 0) {
+            const isStor = cityPop >= 10000;
+            const usedCounts = {};
+            existingBuildings.forEach(b => { usedCounts[b.typ] = (usedCounts[b.typ] || 0) + 1; });
+
+            for (let i = 0; i < extraCount; i++) {
+                const eligible = contentBank.buildingTypes.filter(t => {
+                    if (cityPop && cityPop < t.minPop) return false;
+                    const cap = isStor ? t.maxStor : t.maxNormal;
+                    if (cap != null && (usedCounts[t.typ] || 0) >= cap) return false;
+                    return true;
+                });
+                if (!eligible.length) break;
+                const chosen = weightedPick(eligible, t => t.vikt);
+                usedCounts[chosen.typ] = (usedCounts[chosen.typ] || 0) + 1;
+
+                const raceForName = pickHouseholdRace();
+                const surname = pickSurname(raceForName) || "Okänd";
+                const namn = chosen.typ === "Hem" ? `${surname}s Hem` : `${surname}s ${chosen.typ}`;
+
+                const b = { stad: cityName, namn, typ: chosen.typ, yrke: chosen.yrke || "", antal: chosen.typ === "Hem" ? (1 + Math.floor(Math.random() * 4)) : (1 + Math.floor(Math.random() * 3)) };
+                newBuildings.push(b);
+            }
+        }
+
+        if (!existingBuildings.length && !newBuildings.length) return alert("Inga byggnader att generera invånare för - lägg till minst en byggnad eller ett antal nya.");
+
+        if (!confirm(`Skapa hushåll för ${existingBuildings.length} befintliga + ${newBuildings.length} nya byggnader i ${cityName}?\n\nDetta LÄGGER TILL nya invånare (skriver inte över befintliga).`)) return;
+
+        contentBank.buildings = contentBank.buildings.concat(newBuildings);
+        const allBuildingsForCity = existingBuildings.concat(newBuildings);
 
         const newNPCs = [];
 
-        buildings.forEach(b => {
-            const raceForHousehold = pick(Object.keys(contentBank.racesInfo));
+        allBuildingsForCity.forEach(b => {
+            const raceForHousehold = pickHouseholdRace();
             const count = Math.max(1, b.antal || 1);
             const householdMembers = []; // index i newNPCs för denna byggnads invånare
 
@@ -1080,10 +1137,17 @@
         document.getElementById('cloud-status').innerText = "📤 Sparar befolkning...";
         const output = [NPC_HEADERS, ...savedNPCs.map(npcToRow)];
         await fetch(scriptURL + "?sheet=Invanare", { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
+
+        if (newBuildings.length) {
+            const BUILDING_HEADERS = ["Stad", "Byggnadsnamn", "Typ", "Yrke", "Ungefär antal invånare"];
+            const buildingOutput = [BUILDING_HEADERS, ...contentBank.buildings.map(b => [b.stad, b.namn, b.typ, b.yrke, b.antal])];
+            await fetch(scriptURL + "?sheet=Byggnader", { method: 'POST', mode: 'no-cors', body: JSON.stringify(buildingOutput) });
+        }
+
         document.getElementById('cloud-status').innerText = "✅ Klart";
 
         renderNPCList();
-        alert(`Klart! ${newNPCs.length} invånare skapade i ${cityName}.`);
+        alert(`Klart! ${newNPCs.length} invånare skapade i ${cityName} (${newBuildings.length} nya byggnader tillagda).`);
     }
 
     function appendRelation(npc, text) {
