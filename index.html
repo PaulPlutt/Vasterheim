@@ -1087,23 +1087,57 @@
             return pick(others.length ? others : raceNames);
         }
 
+        function suggestBuildingCount(pop) {
+            if (!pop) return 15;
+            if (pop <= 75) return Math.max(8, Math.round(pop / 4));
+            if (pop <= 300) return Math.round(20 + (pop - 75) / 225 * 20);
+            if (pop <= 1500) return Math.round(40 + (pop - 300) / 1200 * 20);
+            if (pop <= 6000) return Math.round(60 + (pop - 1500) / 4500 * 30);
+            if (pop <= 20000) return Math.round(90 + (pop - 6000) / 14000 * 40);
+            return 130 + Math.min(20, Math.round((pop - 20000) / 15000 * 10));
+        }
+        const suggestedCount = suggestBuildingCount(cityPop);
+
         const extraStr = prompt(
             `${cityName} har redan ${contentBank.buildings.filter(b => b.stad === cityName).length} byggnader i Byggnader-fliken.\n\n` +
-            `Hur många NYA byggnader vill du att jag genererar automatiskt (med vikt/befolkningsgränser från Byggnadstyper-fliken)?\n\n` +
-            `Tips: en stad med några tusen invånare räcker det ofta med 30-80 byggnader för att kännas full - vi simulerar inte varje enskild invånare, bara de som faktiskt kan bli relevanta.`,
-            "30"
+            `Hur många NYA byggnader vill du att jag genererar automatiskt?\n\n` +
+            (cityPop ? `Baserat på ${cityPop} invånare föreslår jag ${suggestedCount} st (se tumregeltabellen du fått i chatten).` : `Ingen befolkningssiffra angiven på staden - föreslår ett standardantal.`),
+            String(suggestedCount)
         );
         if (extraStr === null) return;
         const extraCount = Math.max(0, Math.min(150, parseInt(extraStr) || 0));
 
         const existingBuildings = contentBank.buildings.filter(b => b.stad === cityName);
         const newBuildings = [];
+
+        function makeBuilding(typ, yrke) {
+            const raceForName = pickHouseholdRace();
+            const surname = pickSurname(raceForName) || "Okänd";
+            const namn = typ === "Hem" ? `${surname}s Hem` : `${surname}s ${typ}`;
+            return { stad: cityName, namn, typ, yrke: yrke || "", antal: typ === "Hem" ? (1 + Math.floor(Math.random() * 4)) : (1 + Math.floor(Math.random() * 3)) };
+        }
+
+        let remaining = extraCount;
         if (extraCount > 0) {
+            // ---- Garantera grundläggande byggnadstyper innan resten slumpas viktat ----
+            const ESSENTIAL_TYPES = ["Taverna", "Handelsbod", "Smedja"];
+            const existingTypes = new Set(existingBuildings.map(b => b.typ));
+            ESSENTIAL_TYPES.forEach(typ => {
+                if (remaining <= 0 || existingTypes.has(typ)) return;
+                const typeInfo = contentBank.buildingTypes.find(t => t.typ === typ);
+                if (typeInfo && cityPop && cityPop < typeInfo.minPop) return; // för liten befolkning ens för basbyggnaden
+                newBuildings.push(makeBuilding(typ, typeInfo ? typeInfo.yrke : ""));
+                existingTypes.add(typ);
+                remaining--;
+            });
+        }
+
+        if (remaining > 0) {
             const isStor = cityPop >= 10000;
             const usedCounts = {};
-            existingBuildings.forEach(b => { usedCounts[b.typ] = (usedCounts[b.typ] || 0) + 1; });
+            existingBuildings.concat(newBuildings).forEach(b => { usedCounts[b.typ] = (usedCounts[b.typ] || 0) + 1; });
 
-            for (let i = 0; i < extraCount; i++) {
+            for (let i = 0; i < remaining; i++) {
                 const eligible = contentBank.buildingTypes.filter(t => {
                     if (cityPop && cityPop < t.minPop) return false;
                     const cap = isStor ? t.maxStor : t.maxNormal;
@@ -1113,13 +1147,7 @@
                 if (!eligible.length) break;
                 const chosen = weightedPick(eligible, t => t.vikt);
                 usedCounts[chosen.typ] = (usedCounts[chosen.typ] || 0) + 1;
-
-                const raceForName = pickHouseholdRace();
-                const surname = pickSurname(raceForName) || "Okänd";
-                const namn = chosen.typ === "Hem" ? `${surname}s Hem` : `${surname}s ${chosen.typ}`;
-
-                const b = { stad: cityName, namn, typ: chosen.typ, yrke: chosen.yrke || "", antal: chosen.typ === "Hem" ? (1 + Math.floor(Math.random() * 4)) : (1 + Math.floor(Math.random() * 3)) };
-                newBuildings.push(b);
+                newBuildings.push(makeBuilding(chosen.typ, chosen.yrke));
             }
         }
 
