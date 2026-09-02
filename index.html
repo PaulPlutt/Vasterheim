@@ -86,6 +86,13 @@
         .npc-stat-cell label { font-size: 9px; }
         .npc-stat-cell input { text-align: center; padding: 4px 2px; }
         .npc-derived-row { display: flex; gap: 10px; }
+
+        /* ---- NYTT: modal för befolkningsgenerering ---- */
+        #population-modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 3000; align-items: center; justify-content: center; }
+        #population-modal { background: #162a2e; border: 2px solid #447a82; border-radius: 8px; padding: 20px; width: 340px; max-width: 90vw; display: flex; flex-direction: column; gap: 12px; }
+        #population-modal h3 { margin: 0 0 5px 0; color: #2ecc71; font-size: 1.1em; }
+        .modal-btn-row { display: flex; gap: 10px; margin-top: 8px; }
+        .modal-btn-row button { flex: 1; padding: 10px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -274,6 +281,28 @@
                 <label>Sparade invånare</label>
                 <div id="npc-list-items"><i style="padding:8px; display:block;">Inga invånare sparade än.</i></div>
             </div>
+        </div>
+    </div>
+</div>
+
+<div id="population-modal-overlay">
+    <div id="population-modal">
+        <h3 id="population-modal-title">Generera befolkning</h3>
+        <div class="input-group">
+            <label>Vilken ras befolkar staden mest?</label>
+            <select id="pop-race-select"><option value="">– Jämnt fördelat mellan alla raser –</option></select>
+        </div>
+        <div class="input-group">
+            <label>Andel av hushållen som ska vara den rasen (%)</label>
+            <input type="number" id="pop-race-pct" min="0" max="100" value="60">
+        </div>
+        <div class="input-group">
+            <label>Antal nya byggnader att lägga till</label>
+            <input type="number" id="pop-building-count" min="0" max="150" value="30">
+        </div>
+        <div class="modal-btn-row">
+            <button style="background:#c0392b; color:white;" onclick="closePopulationModal()">Avbryt</button>
+            <button style="background:#2ecc71; color:#0b1d21;" onclick="confirmPopulationModal()">Generera</button>
         </div>
     </div>
 </div>
@@ -1084,46 +1113,61 @@
     // hela hushåll (ägare + familj) och kopplar ihop relationer,
     // baserat på Byggnader/Byggnadstyper/ByggnadstyperFamiljejobb.
     // ============================================================
-    async function generatePopulation(cityName) {
+    var _populationModalCity = null;
+
+    function generatePopulation(cityName) {
         if (!contentBank.loaded) return alert("Innehållet laddas fortfarande - försök igen om en liten stund.");
+        _populationModalCity = cityName;
+
         const city = savedData.find(m => m.name === cityName);
         const cityPop = city ? (parseInt(city.pop) || 0) : 0;
-
         const raceNames = Object.keys(contentBank.racesInfo);
-        const dominantRace = prompt(
-            `Vilken ras befolkar ${cityName} till störst del?\n\nTillgängliga raser: ${raceNames.join(", ")}\n\n(Lämna tomt för helt jämn fördelning mellan alla raser.)`,
-            raceNames.includes("Människa") ? "Människa" : (raceNames[0] || "")
-        );
-        let dominantPct = 0;
-        if (dominantRace && raceNames.includes(dominantRace)) {
-            const pctStr = prompt(`Hur stor andel av hushållen ska vara ${dominantRace}? (0-100)`, "60");
-            dominantPct = Math.max(0, Math.min(100, parseInt(pctStr) || 0));
-        }
+
+        const raceSel = document.getElementById('pop-race-select');
+        raceSel.innerHTML = '<option value="">– Jämnt fördelat mellan alla raser –</option>' +
+            raceNames.map(r => `<option value="${r}">${r}</option>`).join('');
+        raceSel.value = raceNames.includes("Människa") ? "Människa" : "";
+
+        document.getElementById('pop-race-pct').value = 60;
+        document.getElementById('pop-building-count').value = suggestBuildingCount(cityPop);
+        document.getElementById('population-modal-title').innerText = `Generera befolkning – ${cityName}`;
+        document.getElementById('population-modal-overlay').style.display = 'flex';
+    }
+
+    function closePopulationModal() {
+        document.getElementById('population-modal-overlay').style.display = 'none';
+        _populationModalCity = null;
+    }
+
+    function confirmPopulationModal() {
+        const cityName = _populationModalCity;
+        const dominantRace = document.getElementById('pop-race-select').value;
+        const dominantPct = Math.max(0, Math.min(100, parseInt(document.getElementById('pop-race-pct').value) || 0));
+        const extraCount = Math.max(0, Math.min(150, parseInt(document.getElementById('pop-building-count').value) || 0));
+        document.getElementById('population-modal-overlay').style.display = 'none';
+        runPopulationGeneration(cityName, dominantRace, dominantPct, extraCount);
+    }
+
+    function suggestBuildingCount(pop) {
+        if (!pop) return 15;
+        if (pop <= 75) return Math.max(8, Math.round(pop / 4));
+        if (pop <= 300) return Math.round(20 + (pop - 75) / 225 * 20);
+        if (pop <= 1500) return Math.round(40 + (pop - 300) / 1200 * 20);
+        if (pop <= 6000) return Math.round(60 + (pop - 1500) / 4500 * 30);
+        if (pop <= 20000) return Math.round(90 + (pop - 6000) / 14000 * 40);
+        return 130 + Math.min(20, Math.round((pop - 20000) / 15000 * 10));
+    }
+
+    async function runPopulationGeneration(cityName, dominantRace, dominantPct, extraCount) {
+        const city = savedData.find(m => m.name === cityName);
+        const cityPop = city ? (parseInt(city.pop) || 0) : 0;
+        const raceNames = Object.keys(contentBank.racesInfo);
+
         function pickHouseholdRace() {
             if (dominantRace && Math.random() * 100 < dominantPct) return dominantRace;
             const others = raceNames.filter(r => r !== dominantRace);
             return pick(others.length ? others : raceNames);
         }
-
-        function suggestBuildingCount(pop) {
-            if (!pop) return 15;
-            if (pop <= 75) return Math.max(8, Math.round(pop / 4));
-            if (pop <= 300) return Math.round(20 + (pop - 75) / 225 * 20);
-            if (pop <= 1500) return Math.round(40 + (pop - 300) / 1200 * 20);
-            if (pop <= 6000) return Math.round(60 + (pop - 1500) / 4500 * 30);
-            if (pop <= 20000) return Math.round(90 + (pop - 6000) / 14000 * 40);
-            return 130 + Math.min(20, Math.round((pop - 20000) / 15000 * 10));
-        }
-        const suggestedCount = suggestBuildingCount(cityPop);
-
-        const extraStr = prompt(
-            `${cityName} har redan ${contentBank.buildings.filter(b => b.stad === cityName).length} byggnader i Byggnader-fliken.\n\n` +
-            `Hur många NYA byggnader vill du att jag genererar automatiskt?\n\n` +
-            (cityPop ? `Baserat på ${cityPop} invånare föreslår jag ${suggestedCount} st (se tumregeltabellen du fått i chatten).` : `Ingen befolkningssiffra angiven på staden - föreslår ett standardantal.`),
-            String(suggestedCount)
-        );
-        if (extraStr === null) return;
-        const extraCount = Math.max(0, Math.min(150, parseInt(extraStr) || 0));
 
         const existingBuildings = contentBank.buildings.filter(b => b.stad === cityName);
         const newBuildings = [];
