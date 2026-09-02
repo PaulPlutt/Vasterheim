@@ -79,6 +79,13 @@
         .npc-list-row { padding: 6px 8px; border-bottom: 1px solid #2a4d53; cursor: pointer; }
         .npc-list-row:hover { background: rgba(255,255,255,0.05); }
         #npc-save-status { font-size: 10px; color: #8eb0b7; text-align: center; min-height: 12px; }
+
+        /* ---- NYTT: attributgrid i NPC-formuläret ---- */
+        .npc-stat-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+        .npc-stat-cell { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+        .npc-stat-cell label { font-size: 9px; }
+        .npc-stat-cell input { text-align: center; padding: 4px 2px; }
+        .npc-derived-row { display: flex; gap: 10px; }
     </style>
 </head>
 <body>
@@ -183,8 +190,29 @@
                 <div class="input-group"><label>Namn</label><input type="text" id="npc-name"></div>
             </div>
             <div class="editor-row">
-                <div class="input-group"><label>Ras</label><input type="text" id="npc-race"></div>
+                <div class="input-group"><label>Kön</label>
+                    <select id="npc-gender">
+                        <option value="">–</option>
+                        <option value="Man">Man</option>
+                        <option value="Kvinna">Kvinna</option>
+                        <option value="Neutralt">Neutralt</option>
+                    </select>
+                </div>
+                <div class="input-group"><label>Ras</label>
+                    <select id="npc-race"><option value="">– Laddar raser... –</option></select>
+                </div>
+                <div class="input-group"><label>Ålder</label><input type="number" id="npc-age" min="0"></div>
+            </div>
+            <div class="editor-row">
                 <div class="input-group"><label>Yrke</label><input type="text" id="npc-job"></div>
+            </div>
+            <div class="editor-row">
+                <div class="input-group"><label>Religion</label>
+                    <select id="npc-religion"><option value="">– Ingen angiven –</option></select>
+                </div>
+                <div class="input-group"><label>Ekonomisk status</label>
+                    <select id="npc-economy"><option value="">– Ingen angiven –</option></select>
+                </div>
             </div>
             <div class="editor-row">
                 <div class="input-group"><label>Plats</label>
@@ -199,6 +227,31 @@
             </div>
             <div class="editor-row">
                 <div class="input-group"><label>Mål</label><input type="text" id="npc-goal"></div>
+            </div>
+
+            <div class="editor-row">
+                <div class="input-group" style="flex:2;">
+                    <label>Förmågevärden</label>
+                    <div class="npc-stat-grid">
+                        <div class="npc-stat-cell"><label>STR</label><input type="number" id="npc-str"></div>
+                        <div class="npc-stat-cell"><label>DEX</label><input type="number" id="npc-dex"></div>
+                        <div class="npc-stat-cell"><label>KON</label><input type="number" id="npc-kon"></div>
+                        <div class="npc-stat-cell"><label>INT</label><input type="number" id="npc-int"></div>
+                        <div class="npc-stat-cell"><label>VIS</label><input type="number" id="npc-vis"></div>
+                        <div class="npc-stat-cell"><label>CHA</label><input type="number" id="npc-cha"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="editor-row npc-derived-row">
+                <div class="input-group"><label>AC (auto, ändra vid behov)</label><input type="number" id="npc-ac"></div>
+                <div class="input-group"><label>HP (auto, ändra vid behov)</label><input type="number" id="npc-hp"></div>
+            </div>
+
+            <div class="editor-row">
+                <div class="input-group" style="flex:2;"><label>Spelaranteckningar (synligt för alla)</label><textarea id="npc-player-notes" rows="2"></textarea></div>
+            </div>
+            <div class="editor-row">
+                <div class="input-group dm-only-field" style="flex:2;"><label style="color:#ff6b6b">DM-hemligheter</label><textarea id="npc-dm-notes" rows="2"></textarea></div>
             </div>
 
             <button class="npc-gen-btn" style="width:100%; padding:10px; font-size:12px;" onclick="randomizeNPC()">🎲 SLUMPA ALLT</button>
@@ -228,19 +281,194 @@
     const lastNames = ["Järnhand", "Stenskalle", "Falköga", "Ekrot", "Sjöfarare", "Korpunge", "Björnbane", "Vindlöpare", "Guldgrävare", "Frostskägg", "Pilbåge", "Hammarslag", "Nattvandrare", "Ulvtand", "Bergfast", "Eldsjäl", "Skarpsyn", "Gråkappa", "Blodsyxa", "Vildhjärta"];
     const roles = ["Smed", "Värdshusvärd", "Vakt", "Präst", "Tjuv", "Magiker", "Bonde", "Jägare", "Handlare", "Läkare", "Kapten", "Lärling", "Siareska", "Bibliotekarie", "Fiskare", "Soldat", "Snickare", "Skalden", "Alkemist", "Spion"];
 
-    // ---- NYTT: ordbanker för NPC-generering ----
-    const races = ["Människa", "Alv", "Dvärg", "Halvling", "Halvalv", "Halvork", "Drakfödd", "Tiefling", "Gnom", "Ork", "Fé", "Genasi"];
+    // ---- Kvar hårdkodat: utseendebeskrivningar (ingen egen Sheets-flik för detta ännu) ----
     const appearanceBuilds = ["smal", "kraftigt byggd", "muskulös", "spenslig", "undersätsig", "reslig", "böjd av ålder", "atletisk", "senig"];
     const appearanceEyes = ["stålgrå", "djupbruna", "isblå", "bärnstensfärgade", "gröna", "svarta som natten", "olikfärgade"];
     const appearanceFeatures = ["ett ärr över ena ögonbrynet", "tatueringar längs underarmarna", "gråsprängt hår", "ett brutet näsben som läkt snett", "fräknar över hela ansiktet", "en påfallande djup röst", "ovanligt långa fingrar", "ett saknat finger", "guldbrickor inflätade i skägget", "en käpp av mörkt trä", "solbränd hy", "ett konstant road uttryck"];
-    const personalityPool = ["blyg", "utåtriktad", "misstänksam", "godtrogen", "kreativ", "praktisk", "spontan", "metodisk", "hetlevrad", "stoisk", "girig", "generös", "fåfäng", "ödmjuk", "skvallrig", "tystlåten", "modig", "ängslig", "hämndlysten", "förlåtande", "ärlig", "lögnaktig", "lojal", "opportunistisk", "humoristisk", "dyster", "nyfiken", "likgiltig", "stolt", "självutplånande"];
-    const goalsPool = ["vill lämna staden för gott", "söker hämnd på någon som svek dem", "sparar pengar till ett bättre liv", "vill bli erkänd inom sitt hantverk", "döljer en hemlighet om sin familj", "vill hitta ett försvunnet syskon", "drömmer om att resa jorden runt", "vill ta över en förälders verksamhet", "är skyldig pengar till fel person", "söker meningen med livet", "försöker bevisa sig värdig för någon", "gömmer sig från sitt förflutna", "vill lära sig magi trots förbud", "hoppas bli insläppt i en förnäm krets", "vill hämnas en gammal orättvisa"];
 
     function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
     function pickN(arr, n) {
         const copy = [...arr], out = [];
         for (let i = 0; i < n && copy.length; i++) out.push(copy.splice(Math.floor(Math.random() * copy.length), 1)[0]);
         return out;
+    }
+    function generateAppearanceText() {
+        return `Är ${pick(appearanceBuilds)} med ${pick(appearanceEyes)} ögon. Har ${pick(appearanceFeatures)}.`;
+    }
+
+    // ============================================================
+    // NYTT: Innehållsbank - läses från Google Sheets istället för
+    // hårdkodade listor. DM redigerar direkt i kalkylarket, appen
+    // läser senaste versionen varje gång sidan laddas.
+    // ============================================================
+    var contentBank = {
+        namesByRaceGender: {}, surnamesByRace: {}, racesInfo: {}, raceStatMods: {},
+        yrken: [], personalityPool: [], goalsPool: [], religions: [], econStatuses: [],
+        statsSettings: { min: 3, max: 18, baseline: 10, variation: 3 },
+        loaded: false
+    };
+
+    const HYBRID_PARENTS = { "Halvalv": ["Alv", "Människa"], "Halvork": ["Ork", "Människa"] };
+
+    async function fetchSheet(name) {
+        try {
+            const res = await fetch(scriptURL + "?sheet=" + encodeURIComponent(name));
+            const data = await res.json();
+            return (data || []).slice(1).filter(r => r && r.some(v => v !== "" && v !== null && v !== undefined));
+        } catch (e) { console.error("Kunde inte läsa " + name, e); return []; }
+    }
+
+    async function loadContentBank() {
+        const genBtn = document.querySelector('.npc-gen-btn');
+        if (genBtn) { genBtn.disabled = true; genBtn.innerText = "⏳ Laddar innehåll..."; }
+
+        const [fornamn, efternamn, raser, yrken, personlighet, mal, religioner, ekonomi, statsInst, grundstats] = await Promise.all([
+            fetchSheet("Fornamn"), fetchSheet("Efternamn"), fetchSheet("Raser"), fetchSheet("Yrken"),
+            fetchSheet("Personlighetsdrag"), fetchSheet("Mal"), fetchSheet("Religioner"),
+            fetchSheet("EkonomiskStatus"), fetchSheet("StatsInstallningar"), fetchSheet("GrundstatsPerRas")
+        ]);
+
+        fornamn.forEach(row => {
+            const [namn, kon, ras] = row;
+            if (!namn || !ras) return;
+            if (!contentBank.namesByRaceGender[ras]) contentBank.namesByRaceGender[ras] = {};
+            if (!contentBank.namesByRaceGender[ras][kon]) contentBank.namesByRaceGender[ras][kon] = [];
+            contentBank.namesByRaceGender[ras][kon].push(namn);
+        });
+
+        efternamn.forEach(row => {
+            const [namn, ras] = row;
+            if (!namn || !ras) return;
+            if (!contentBank.surnamesByRace[ras]) contentBank.surnamesByRace[ras] = [];
+            contentBank.surnamesByRace[ras].push(namn);
+        });
+
+        raser.forEach(row => {
+            const [ras, vuxenFran, livslangd, andelBarn] = row;
+            if (!ras) return;
+            contentBank.racesInfo[ras] = {
+                vuxenFran: parseFloat(vuxenFran) || 18,
+                livslangd: parseFloat(livslangd) || 80,
+                andelBarn: parseFloat(andelBarn) || 15
+            };
+        });
+
+        contentBank.yrken = yrken.map(r => r[0]).filter(Boolean);
+        contentBank.personalityPool = personlighet.map(r => r[0]).filter(Boolean);
+        contentBank.goalsPool = mal.map(r => r[0]).filter(Boolean);
+        contentBank.religions = religioner.map(r => ({ namn: r[0], beskrivning: r[1] })).filter(r => r.namn);
+        contentBank.econStatuses = ekonomi.map(r => ({ niva: r[0], vikt: parseFloat(r[1]) || 1 })).filter(r => r.niva);
+
+        statsInst.forEach(row => {
+            const [namn, varde] = row;
+            if (!namn) return;
+            const v = parseFloat(varde);
+            if (isNaN(v)) return;
+            const key = String(namn).toLowerCase();
+            if (key.includes("min")) contentBank.statsSettings.min = v;
+            else if (key.includes("max")) contentBank.statsSettings.max = v;
+            else if (key.includes("baslinje")) contentBank.statsSettings.baseline = v;
+            else if (key.includes("variation")) contentBank.statsSettings.variation = v;
+        });
+
+        grundstats.forEach(row => {
+            const [ras, str, dex, kon, intt, vis, cha] = row;
+            if (!ras) return;
+            contentBank.raceStatMods[ras] = {
+                STR: parseFloat(str) || 0, DEX: parseFloat(dex) || 0, KON: parseFloat(kon) || 0,
+                INT: parseFloat(intt) || 0, VIS: parseFloat(vis) || 0, CHA: parseFloat(cha) || 0
+            };
+        });
+
+        contentBank.loaded = true;
+        populateNPCDropdowns();
+        if (genBtn) { genBtn.disabled = false; genBtn.innerText = "🎲 SLUMPA ALLT"; }
+    }
+
+    function populateNPCDropdowns() {
+        const raceSel = document.getElementById('npc-race');
+        const currentRace = raceSel.value;
+        const raceNames = Object.keys(contentBank.racesInfo);
+        raceSel.innerHTML = '<option value="">– Välj ras –</option>' + raceNames.map(r => `<option value="${r}">${r}</option>`).join('');
+        if (raceNames.includes(currentRace)) raceSel.value = currentRace;
+
+        const relSel = document.getElementById('npc-religion');
+        const currentRel = relSel.value;
+        relSel.innerHTML = '<option value="">– Ingen angiven –</option>' + contentBank.religions.map(r => `<option value="${r.namn}">${r.namn}</option>`).join('');
+        relSel.value = currentRel;
+
+        const econSel = document.getElementById('npc-economy');
+        const currentEcon = econSel.value;
+        econSel.innerHTML = '<option value="">– Ingen angiven –</option>' + contentBank.econStatuses.map(e => `<option value="${e.niva}">${e.niva}</option>`).join('');
+        econSel.value = currentEcon;
+    }
+
+    // ---- Namn/ras-slump med arv för blandraser (Halvalv/Halvork) ----
+    function pickFirstName(ras, kon) {
+        let pool = contentBank.namesByRaceGender[ras] && contentBank.namesByRaceGender[ras][kon];
+        if ((!pool || !pool.length) && HYBRID_PARENTS[ras]) {
+            const parentRace = pick(HYBRID_PARENTS[ras]);
+            pool = contentBank.namesByRaceGender[parentRace] && contentBank.namesByRaceGender[parentRace][kon];
+        }
+        if (!pool || !pool.length) pool = contentBank.namesByRaceGender["Människa"] && contentBank.namesByRaceGender["Människa"][kon];
+        return pool && pool.length ? pick(pool) : "Namnlös";
+    }
+    function pickSurname(ras) {
+        let pool = contentBank.surnamesByRace[ras];
+        if ((!pool || !pool.length) && HYBRID_PARENTS[ras]) {
+            const parentRace = pick(HYBRID_PARENTS[ras]);
+            pool = contentBank.surnamesByRace[parentRace];
+        }
+        if (!pool || !pool.length) pool = contentBank.surnamesByRace["Människa"];
+        return pool && pool.length ? pick(pool) : "";
+    }
+    function pickGenderForRace(ras) {
+        let genders = Object.keys(contentBank.namesByRaceGender[ras] || {});
+        if (!genders.length && HYBRID_PARENTS[ras]) {
+            for (const p of HYBRID_PARENTS[ras]) {
+                genders = Object.keys(contentBank.namesByRaceGender[p] || {});
+                if (genders.length) break;
+            }
+        }
+        if (!genders.length) genders = ["Man", "Kvinna"];
+        return pick(genders);
+    }
+
+    // ---- Ålder, baserat på rasens vuxenålder/livslängd/andel barn ----
+    function generateAge(ras) {
+        const info = contentBank.racesInfo[ras];
+        if (!info) return "";
+        const isChild = Math.random() * 100 < info.andelBarn;
+        if (isChild) return Math.max(1, Math.floor(Math.random() * info.vuxenFran));
+        return Math.floor(info.vuxenFran + Math.random() * Math.max(1, info.livslangd - info.vuxenFran));
+    }
+
+    // ---- Förmågevärden: rasens baslinje + individuell slumpvariation ----
+    function abilityMod(score) { return Math.floor((score - 10) / 2); }
+    function generateStats(ras) {
+        const mods = contentBank.raceStatMods[ras] || {};
+        const s = contentBank.statsSettings;
+        const stats = {};
+        ["STR", "DEX", "KON", "INT", "VIS", "CHA"].forEach(key => {
+            const variation = Math.floor(Math.random() * (s.variation * 2 + 1)) - s.variation;
+            let val = s.baseline + (mods[key] || 0) + variation;
+            val = Math.max(s.min, Math.min(s.max, val));
+            stats[key] = val;
+        });
+        return stats;
+    }
+    const COMBAT_JOBS = ["Vakt", "Soldat", "Kapten", "Krigare", "Sheriff", "Äventyrare", "Stadsvakt", "Fängelsevakt"];
+    function deriveDerivedStats(stats, yrke) {
+        const ac = 10 + abilityMod(stats.DEX);
+        let hp = 4 + abilityMod(stats.KON);
+        if (COMBAT_JOBS.includes(yrke)) hp += 6;
+        return { ac, hp: Math.max(1, hp) };
+    }
+    function weightedPick(items, weightFn) {
+        const total = items.reduce((s, i) => s + weightFn(i), 0);
+        let r = Math.random() * total;
+        for (const item of items) { r -= weightFn(item); if (r <= 0) return item; }
+        return items[items.length - 1];
     }
 
     function formatImgUrl(url, folder) {
@@ -437,7 +665,9 @@
     }
 
     function clearNPCForm() {
-        ['npc-name','npc-race','npc-job','npc-appearance','npc-personality','npc-goal'].forEach(id => document.getElementById(id).value = "");
+        ['npc-name','npc-gender','npc-race','npc-age','npc-job','npc-appearance','npc-personality',
+         'npc-religion','npc-economy','npc-goal','npc-str','npc-dex','npc-kon','npc-int','npc-vis','npc-cha',
+         'npc-ac','npc-hp','npc-dm-notes','npc-player-notes'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
         document.getElementById('npc-place').value = "";
     }
 
@@ -449,12 +679,46 @@
     }
 
     function randomizeNPC() {
-        document.getElementById('npc-name').value = pick(firstNames) + " " + pick(lastNames);
-        document.getElementById('npc-race').value = pick(races);
-        document.getElementById('npc-job').value = pick(roles);
-        document.getElementById('npc-appearance').value = `Är ${pick(appearanceBuilds)} med ${pick(appearanceEyes)} ögon. Har ${pick(appearanceFeatures)}.`;
-        document.getElementById('npc-personality').value = pickN(personalityPool, 3).join(", ");
-        document.getElementById('npc-goal').value = pick(goalsPool);
+        if (!contentBank.loaded) return alert("Innehållet laddas fortfarande - vänta ett par sekunder och försök igen.");
+        const raceNames = Object.keys(contentBank.racesInfo);
+        if (!raceNames.length) return alert("Inga raser hittades i kalkylarket (fliken 'Raser'). Kontrollera att den är ifylld.");
+
+        const ras = pick(raceNames);
+        const kon = pickGenderForRace(ras);
+        const fornamn = pickFirstName(ras, kon);
+        const efternamn = pickSurname(ras);
+        const yrke = contentBank.yrken.length ? pick(contentBank.yrken) : "";
+        const alder = generateAge(ras);
+        const stats = generateStats(ras);
+        const derived = deriveDerivedStats(stats, yrke);
+        const religion = contentBank.religions.length ? pick(contentBank.religions).namn : "";
+        const ekonomi = contentBank.econStatuses.length ? weightedPick(contentBank.econStatuses, e => e.vikt).niva : "";
+
+        document.getElementById('npc-name').value = (fornamn + " " + efternamn).trim();
+        document.getElementById('npc-gender').value = kon || "Man";
+        document.getElementById('npc-race').value = ras;
+        document.getElementById('npc-age').value = alder;
+        document.getElementById('npc-job').value = yrke;
+        document.getElementById('npc-religion').value = religion;
+        document.getElementById('npc-economy').value = ekonomi;
+        document.getElementById('npc-personality').value = contentBank.personalityPool.length ? pickN(contentBank.personalityPool, 3).join(", ") : "";
+        document.getElementById('npc-goal').value = contentBank.goalsPool.length ? pick(contentBank.goalsPool) : "";
+        document.getElementById('npc-appearance').value = generateAppearanceText();
+        document.getElementById('npc-str').value = stats.STR;
+        document.getElementById('npc-dex').value = stats.DEX;
+        document.getElementById('npc-kon').value = stats.KON;
+        document.getElementById('npc-int').value = stats.INT;
+        document.getElementById('npc-vis').value = stats.VIS;
+        document.getElementById('npc-cha').value = stats.CHA;
+        document.getElementById('npc-ac').value = derived.ac;
+        document.getElementById('npc-hp').value = derived.hp;
+    }
+
+    const NPC_HEADERS = ["Namn","Kön","Ras","Ålder","Yrke","Utseende","Personlighet","Religion","EkonomiskStatus","Mål","STR","DEX","KON","INT","VIS","CHA","AC","HP","Plats","DM_Anteckningar","Spelar_Anteckningar"];
+
+    function npcToRow(n) {
+        return [n.name, n.gender, n.race, n.age, n.job, n.appearance, n.personality, n.religion, n.economy, n.goal,
+                n.str, n.dex, n.kon, n.int, n.vis, n.cha, n.ac, n.hp, n.place, n.dmNotes, n.playerNotes];
     }
 
     async function loadNPCsFromCloud() {
@@ -462,8 +726,11 @@
             const response = await fetch(scriptURL + "?sheet=Invanare");
             const data = await response.json();
             savedNPCs = (data || []).slice(1).filter(row => row && row[0]).map(row => ({
-                name: row[0] || "", race: row[1] || "", job: row[2] || "",
-                appearance: row[3] || "", personality: row[4] || "", goal: row[5] || "", place: row[6] || ""
+                name: row[0]||"", gender: row[1]||"", race: row[2]||"", age: row[3]||"", job: row[4]||"",
+                appearance: row[5]||"", personality: row[6]||"", religion: row[7]||"", economy: row[8]||"",
+                goal: row[9]||"", str: row[10]||"", dex: row[11]||"", kon: row[12]||"", int: row[13]||"",
+                vis: row[14]||"", cha: row[15]||"", ac: row[16]||"", hp: row[17]||"", place: row[18]||"",
+                dmNotes: row[19]||"", playerNotes: row[20]||""
             }));
             renderNPCList();
         } catch (e) { console.error("Kunde inte ladda invånare", e); }
@@ -475,19 +742,33 @@
 
         const n = {
             name: name,
+            gender: document.getElementById('npc-gender').value,
             race: document.getElementById('npc-race').value,
+            age: document.getElementById('npc-age').value,
             job: document.getElementById('npc-job').value,
             appearance: document.getElementById('npc-appearance').value,
             personality: document.getElementById('npc-personality').value,
+            religion: document.getElementById('npc-religion').value,
+            economy: document.getElementById('npc-economy').value,
             goal: document.getElementById('npc-goal').value,
-            place: document.getElementById('npc-place').value
+            str: document.getElementById('npc-str').value,
+            dex: document.getElementById('npc-dex').value,
+            kon: document.getElementById('npc-kon').value,
+            int: document.getElementById('npc-int').value,
+            vis: document.getElementById('npc-vis').value,
+            cha: document.getElementById('npc-cha').value,
+            ac: document.getElementById('npc-ac').value,
+            hp: document.getElementById('npc-hp').value,
+            place: document.getElementById('npc-place').value,
+            dmNotes: document.getElementById('npc-dm-notes').value,
+            playerNotes: document.getElementById('npc-player-notes').value
         };
 
         const idx = parseInt(document.getElementById('npc-edit-index').value);
         if (idx > -1) savedNPCs[idx] = n; else savedNPCs.push(n);
 
         document.getElementById('npc-save-status').innerText = "📤 Sparar...";
-        const output = [["Namn","Ras","Yrke","Utseende","Personlighet","Mål","Plats"], ...savedNPCs.map(m => [m.name, m.race, m.job, m.appearance, m.personality, m.goal, m.place])];
+        const output = [NPC_HEADERS, ...savedNPCs.map(npcToRow)];
         await fetch(scriptURL + "?sheet=Invanare", { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
 
         document.getElementById('npc-edit-index').value = "-1";
@@ -503,7 +784,7 @@
 
         savedNPCs.splice(idx, 1);
         document.getElementById('npc-save-status').innerText = "📤 Raderar...";
-        const output = [["Namn","Ras","Yrke","Utseende","Personlighet","Mål","Plats"], ...savedNPCs.map(m => [m.name, m.race, m.job, m.appearance, m.personality, m.goal, m.place])];
+        const output = [NPC_HEADERS, ...savedNPCs.map(npcToRow)];
         await fetch(scriptURL + "?sheet=Invanare", { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
 
         document.getElementById('npc-edit-index').value = "-1";
@@ -517,13 +798,28 @@
         switchTab('npc');
         setEditorOpen(true);
         populateNPCPlaceDropdown();
+        populateNPCDropdowns();
         document.getElementById('npc-name').value = n.name;
+        document.getElementById('npc-gender').value = n.gender;
         document.getElementById('npc-race').value = n.race;
+        document.getElementById('npc-age').value = n.age;
         document.getElementById('npc-job').value = n.job;
         document.getElementById('npc-appearance').value = n.appearance;
         document.getElementById('npc-personality').value = n.personality;
+        document.getElementById('npc-religion').value = n.religion;
+        document.getElementById('npc-economy').value = n.economy;
         document.getElementById('npc-goal').value = n.goal;
+        document.getElementById('npc-str').value = n.str;
+        document.getElementById('npc-dex').value = n.dex;
+        document.getElementById('npc-kon').value = n.kon;
+        document.getElementById('npc-int').value = n.int;
+        document.getElementById('npc-vis').value = n.vis;
+        document.getElementById('npc-cha').value = n.cha;
+        document.getElementById('npc-ac').value = n.ac;
+        document.getElementById('npc-hp').value = n.hp;
         document.getElementById('npc-place').value = n.place;
+        document.getElementById('npc-dm-notes').value = n.dmNotes;
+        document.getElementById('npc-player-notes').value = n.playerNotes;
         document.getElementById('npc-edit-index').value = i;
     }
 
@@ -535,7 +831,7 @@
         }
         container.innerHTML = savedNPCs.map((n, i) => `
             <div class="npc-list-row" onclick="prepareEditNPC(${i})">
-                <b style="color:#2ecc71;">${n.name}</b> <span>(${n.race || '?'}, ${n.job || '?'})</span><br>
+                <b style="color:#2ecc71;">${n.name}</b> <span>(${n.race || '?'}, ${n.age || '?'} år, ${n.job || '?'})</span><br>
                 <span>📍 ${n.place || 'Ingen plats angiven'}</span>
             </div>
         `).join('');
@@ -575,6 +871,7 @@
     }
     loadFromCloud();
     loadNPCsFromCloud();
+    loadContentBank();
 </script>
 </body>
 </html>
