@@ -93,6 +93,24 @@
         #population-modal h3 { margin: 0 0 5px 0; color: #2ecc71; font-size: 1.1em; }
         .modal-btn-row { display: flex; gap: 10px; margin-top: 8px; }
         .modal-btn-row button { flex: 1; padding: 10px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+
+        /* ---- NYTT: Stridsläge (initiativ + HP) ---- */
+        #encounter-modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 3000; align-items: center; justify-content: center; }
+        #encounter-modal { background: #162a2e; border: 2px solid #922b21; border-radius: 8px; padding: 18px; width: 420px; max-width: 92vw; max-height: 85vh; display: flex; flex-direction: column; gap: 10px; }
+        #encounter-modal h3 { margin: 0; color: #e74c3c; font-size: 1.15em; }
+        #encounter-round { color: #8eb0b7; font-size: 12px; text-align: center; }
+        #encounter-add-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: flex-end; border-bottom: 1px solid #2a4d53; padding-bottom: 10px; }
+        #encounter-add-row .input-group { min-width: 90px; }
+        #encounter-list { overflow-y: auto; flex-grow: 1; display: flex; flex-direction: column; gap: 6px; max-height: 40vh; }
+        .encounter-row { background: #1e343a; border: 1px solid #2a4d53; border-radius: 5px; padding: 8px 10px; display: flex; align-items: center; gap: 8px; }
+        .encounter-row.active-turn { border-color: #2ecc71; background: #1f3d2e; }
+        .encounter-row .enc-init { font-weight: bold; color: #f1c40f; width: 26px; text-align: center; }
+        .encounter-row .enc-name { flex-grow: 1; font-weight: bold; }
+        .encounter-row .enc-hp-controls { display: flex; align-items: center; gap: 4px; }
+        .encounter-row .enc-hp-controls button { width: 22px; height: 22px; border: none; border-radius: 3px; background: #2a4d53; color: white; cursor: pointer; font-weight: bold; }
+        .encounter-row .enc-hp-val { width: 50px; text-align: center; font-size: 12px; }
+        .encounter-row .enc-down { color: #e74c3c; text-decoration: line-through; opacity: 0.6; }
+        .encounter-row .enc-remove { background: none; border: none; color: #e74c3c; cursor: pointer; font-size: 14px; }
     </style>
 </head>
 <body>
@@ -126,6 +144,7 @@
     <button id="toggle-editor-btn" class="dm-only-btn" onclick="toggleEditorPanel()">◀ REDIGERA</button>
     <button id="back-to-world-btn" style="display:none; position:absolute; top:15px; left:15px; z-index:1002; background:#2a4d53; color:#8eb0b7; border:2px solid #447a82; padding:10px 12px; cursor:pointer; font-size:13px; font-weight:bold; border-radius:5px;" onclick="closeCityMap()">⬅ Till världskartan</button>
     <button id="grid-toggle-btn" style="display:none; position:absolute; top:15px; left:170px; z-index:1002; background:#2a4d53; color:#8eb0b7; border:2px solid #447a82; padding:10px 12px; cursor:pointer; font-size:13px; font-weight:bold; border-radius:5px;" onclick="toggleGrid()">🔲 Rutnät</button>
+    <button id="encounter-toggle-btn" class="dm-only-btn" style="position:absolute; top:65px; right:15px; z-index:1002; background:#c0392b; color:white; border:2px solid #922b21; padding:10px 12px; cursor:pointer; font-size:13px; font-weight:bold; border-radius:5px;" onclick="openEncounterPanel()">⚔️ Strid</button>
 
     <div id="editor-panel" class="editor-hidden">
         <div class="panel-tabs">
@@ -310,10 +329,64 @@
     </div>
 </div>
 
+<div id="encounter-modal-overlay">
+    <div id="encounter-modal">
+        <h3>⚔️ Stridsläge</h3>
+        <div id="encounter-round">Runda 1</div>
+
+        <div id="encounter-monster-search" style="display:flex; gap:6px; align-items:flex-end; border-bottom:1px solid #2a4d53; padding-bottom:10px;">
+            <div class="input-group" style="flex:2; min-width:160px;">
+                <label>🐉 Sök D&D-monster (SRD)</label>
+                <input type="text" id="enc-monster-search-input" list="enc-monster-datalist" placeholder="t.ex. Troll, Adult Red Dragon...">
+                <datalist id="enc-monster-datalist"></datalist>
+            </div>
+            <button class="npc-gen-btn" style="padding:8px 12px; font-size:12px;" onclick="fetchMonsterIntoForm()">Hämta stats</button>
+        </div>
+
+        <div id="encounter-add-row">
+            <div class="input-group" style="flex:2; min-width:140px;">
+                <label>Namn</label>
+                <input type="text" id="enc-add-name" list="enc-npc-datalist" placeholder="Sök invånare eller skriv valfritt">
+                <datalist id="enc-npc-datalist"></datalist>
+            </div>
+            <div class="input-group">
+                <label>HP</label>
+                <input type="number" id="enc-add-hp" value="10" style="width:60px;">
+            </div>
+            <div class="input-group">
+                <label>AC</label>
+                <input type="number" id="enc-add-ac" value="" style="width:50px;">
+            </div>
+            <div class="input-group">
+                <label>Init.bonus</label>
+                <input type="number" id="enc-add-initbonus" value="0" style="width:60px;">
+            </div>
+            <div class="input-group">
+                <label>Initiativ</label>
+                <div style="display:flex; gap:4px;">
+                    <input type="number" id="enc-add-init" value="" style="width:50px;">
+                    <button class="npc-gen-btn" style="padding:6px 8px; font-size:11px;" onclick="rollEncounterInitiative()">🎲</button>
+                </div>
+            </div>
+            <button class="primary-save" style="width:auto; margin:0; padding:8px 14px;" onclick="addEncounterCombatant()">+ Lägg till</button>
+        </div>
+
+        <div id="encounter-list"></div>
+
+        <div class="modal-btn-row">
+            <button style="background:#2a4d53; color:white;" onclick="closeEncounterPanel()">Stäng</button>
+            <button style="background:#c0392b; color:white;" onclick="clearEncounter()">Avsluta strid</button>
+            <button style="background:#2ecc71; color:#0b1d21;" onclick="nextEncounterTurn()">Nästa tur ▶</button>
+        </div>
+    </div>
+</div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
     const scriptURL = "https://script.google.com/macros/s/AKfycbz58adKsUWUQgv5FEJBxwIWlAvczTZ64HdybbQpbwQRGSL1x9EcZGcHtXusIwUkJcfD/exec";
-    var map = L.map('map', { crs: L.CRS.Simple, minZoom: -2, maxZoom: 2, attributionControl: false });
+    var WORLD_MAX_ZOOM = 2;
+    var CITY_MAX_ZOOM = 7; // ger gott om marginal ner till 1-metersrutor
+    var map = L.map('map', { crs: L.CRS.Simple, minZoom: -2, maxZoom: WORLD_MAX_ZOOM, attributionControl: false });
     var worldBounds = [[0, 0], [2887, 3840]];
     var worldImageLayer = L.imageOverlay('VASTERHEIM.webp', worldBounds).addTo(map);
     map.fitBounds(worldBounds);
@@ -527,6 +600,7 @@
         if (needsSave) await saveBuildingsToCloud();
 
         const cityBounds = [[0, 0], [CITY_CANVAS_SIZE, CITY_CANVAS_SIZE]];
+        map.setMaxZoom(CITY_MAX_ZOOM);
         map.fitBounds(cityBounds);
 
         document.getElementById('back-to-world-btn').style.display = 'block';
@@ -541,6 +615,7 @@
         currentCityName = null;
         map.eachLayer(l => { if (l instanceof L.Marker) map.removeLayer(l); });
         if (!map.hasLayer(worldImageLayer)) worldImageLayer.addTo(map);
+        map.setMaxZoom(WORLD_MAX_ZOOM);
         map.fitBounds(worldBounds);
         document.getElementById('back-to-world-btn').style.display = 'none';
         document.getElementById('grid-toggle-btn').style.display = 'none';
@@ -1393,6 +1468,167 @@
 
     function appendRelation(npc, text) {
         npc.relations = npc.relations ? (npc.relations + "; " + text) : text;
+    }
+
+    // ============================================================
+    // NYTT: Stridsläge - initiativ + HP tillsammans. Session-baserat,
+    // sparas inte till Sheets (en strid är övergående).
+    // ============================================================
+    var encounterState = { combatants: [], round: 1, turnIndex: 0 };
+    var dndMonsterIndex = {}; // Namn -> index (slug), för att slå upp detaljer
+    var dndMonsterListLoaded = false;
+
+    async function loadDndMonsterList() {
+        if (dndMonsterListLoaded) return;
+        try {
+            const res = await fetch('https://www.dnd5eapi.co/api/monsters');
+            const data = await res.json();
+            const dl = document.getElementById('enc-monster-datalist');
+            dl.innerHTML = '';
+            data.results.forEach(m => {
+                dndMonsterIndex[m.name] = m.index;
+                const opt = document.createElement('option');
+                opt.value = m.name;
+                dl.appendChild(opt);
+            });
+            dndMonsterListLoaded = true;
+        } catch (e) { console.error("Kunde inte hämta D&D-monsterlistan", e); }
+    }
+
+    async function fetchMonsterIntoForm() {
+        const namn = document.getElementById('enc-monster-search-input').value.trim();
+        const index = dndMonsterIndex[namn];
+        if (!index) return alert("Hittade inget monster med det exakta namnet. Välj ett från listan som dyker upp när du skriver.");
+
+        try {
+            const res = await fetch('https://www.dnd5eapi.co/api/monsters/' + index);
+            const m = await res.json();
+            document.getElementById('enc-add-name').value = m.name;
+            document.getElementById('enc-add-hp').value = m.hit_points;
+            document.getElementById('enc-add-ac').value = (m.armor_class && m.armor_class[0]) ? m.armor_class[0].value : "";
+            const dexMod = Math.floor((m.dexterity - 10) / 2);
+            document.getElementById('enc-add-initbonus').value = dexMod;
+            _lastFetchedMonsterInfo = `${m.type || ''}, CR ${m.challenge_rating != null ? m.challenge_rating : '?'} — STR ${m.strength} DEX ${m.dexterity} CON ${m.constitution} INT ${m.intelligence} WIS ${m.wisdom} CHA ${m.charisma}`;
+        } catch (e) {
+            alert("Kunde inte hämta monstret just nu. Försök igen om en stund.");
+        }
+    }
+    var _lastFetchedMonsterInfo = null;
+
+    function populateEncounterDatalist() {
+        const dl = document.getElementById('enc-npc-datalist');
+        dl.innerHTML = savedNPCs.map(n => `<option value="${n.name}">`).join('');
+    }
+
+    function openEncounterPanel() {
+        populateEncounterDatalist();
+        loadDndMonsterList();
+        document.getElementById('encounter-modal-overlay').style.display = 'flex';
+        renderEncounterList();
+    }
+    function closeEncounterPanel() {
+        document.getElementById('encounter-modal-overlay').style.display = 'none';
+    }
+
+    function rollEncounterInitiative() {
+        const bonus = parseInt(document.getElementById('enc-add-initbonus').value) || 0;
+        const slag = Math.floor(Math.random() * 20) + 1 + bonus;
+        document.getElementById('enc-add-init').value = slag;
+    }
+
+    function addEncounterCombatant() {
+        const namn = document.getElementById('enc-add-name').value.trim();
+        if (!namn) return alert("Skriv eller välj ett namn först.");
+
+        let hp = parseInt(document.getElementById('enc-add-hp').value) || 10;
+        let ac = document.getElementById('enc-add-ac').value;
+        const matchNPC = savedNPCs.find(n => n.name === namn);
+        if (matchNPC && !ac) {
+            if (matchNPC.hp) hp = parseInt(matchNPC.hp) || hp;
+            ac = matchNPC.ac || "";
+        }
+
+        let init = document.getElementById('enc-add-init').value;
+        if (init === "") {
+            const bonus = parseInt(document.getElementById('enc-add-initbonus').value) || 0;
+            init = Math.floor(Math.random() * 20) + 1 + bonus;
+        } else {
+            init = parseInt(init) || 0;
+        }
+
+        const info = (namn === document.getElementById('enc-monster-search-input').value.trim()) ? _lastFetchedMonsterInfo : null;
+
+        encounterState.combatants.push({ namn, hpMax: hp, hp: hp, ac, init, nedslagen: false, info, expanded: false });
+        encounterState.combatants.sort((a, b) => b.init - a.init);
+        encounterState.turnIndex = 0;
+        encounterState.round = 1;
+
+        document.getElementById('enc-add-name').value = "";
+        document.getElementById('enc-add-ac').value = "";
+        document.getElementById('enc-add-init').value = "";
+        document.getElementById('enc-monster-search-input').value = "";
+        _lastFetchedMonsterInfo = null;
+        renderEncounterList();
+    }
+
+    function adjustEncounterHP(idx, delta) {
+        const c = encounterState.combatants[idx];
+        c.hp = Math.max(0, Math.min(c.hpMax, c.hp + delta));
+        c.nedslagen = c.hp <= 0;
+        renderEncounterList();
+    }
+
+    function removeEncounterCombatant(idx) {
+        encounterState.combatants.splice(idx, 1);
+        if (encounterState.turnIndex >= encounterState.combatants.length) encounterState.turnIndex = 0;
+        renderEncounterList();
+    }
+
+    function nextEncounterTurn() {
+        if (!encounterState.combatants.length) return;
+        encounterState.turnIndex++;
+        if (encounterState.turnIndex >= encounterState.combatants.length) {
+            encounterState.turnIndex = 0;
+            encounterState.round++;
+        }
+        renderEncounterList();
+    }
+
+    function clearEncounter() {
+        if (!confirm("Avsluta striden och rensa listan?")) return;
+        encounterState = { combatants: [], round: 1, turnIndex: 0 };
+        renderEncounterList();
+    }
+
+    function toggleEncounterInfo(idx) {
+        encounterState.combatants[idx].expanded = !encounterState.combatants[idx].expanded;
+        renderEncounterList();
+    }
+
+    function renderEncounterList() {
+        document.getElementById('encounter-round').innerText = "Runda " + encounterState.round;
+        const list = document.getElementById('encounter-list');
+        if (!encounterState.combatants.length) {
+            list.innerHTML = '<i style="padding:8px; display:block; color:#8eb0b7;">Inga stridande tillagda än.</i>';
+            return;
+        }
+        list.innerHTML = encounterState.combatants.map((c, i) => `
+            <div class="encounter-row ${i === encounterState.turnIndex ? 'active-turn' : ''}" style="flex-direction:column; align-items:stretch;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <div class="enc-init">${c.init}</div>
+                    <div class="enc-name ${c.nedslagen ? 'enc-down' : ''}" style="${c.info ? 'cursor:pointer;' : ''}" ${c.info ? `onclick="toggleEncounterInfo(${i})"` : ''}>
+                        ${c.namn}${c.ac ? ' <span style="color:#8eb0b7; font-weight:normal;">(AC ' + c.ac + ')</span>' : ''}${c.info ? ' <span style="color:#9b59b6;">ℹ️</span>' : ''}
+                    </div>
+                    <div class="enc-hp-controls">
+                        <button onclick="adjustEncounterHP(${i}, -1)">−</button>
+                        <span class="enc-hp-val">${c.hp}/${c.hpMax}</span>
+                        <button onclick="adjustEncounterHP(${i}, 1)">+</button>
+                    </div>
+                    <button class="enc-remove" onclick="removeEncounterCombatant(${i})">✕</button>
+                </div>
+                ${c.expanded && c.info ? `<div style="font-size:11px; color:#8eb0b7; padding-left:34px; padding-top:2px;">${c.info}</div>` : ''}
+            </div>
+        `).join('');
     }
 
     loadFromCloud();
