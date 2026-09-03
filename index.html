@@ -120,9 +120,12 @@
 
 <div id="content-row">
     <div id="map"></div>
+    <canvas id="grid-canvas" style="position:absolute; top:0; left:0; pointer-events:none; z-index:900;"></canvas>
+    <div id="grid-label" style="display:none; position:absolute; bottom:10px; left:15px; z-index:1002; background:rgba(11,29,33,0.85); color:#8eb0b7; padding:4px 10px; border-radius:4px; font-size:11px; font-weight:bold;"></div>
 
     <button id="toggle-editor-btn" class="dm-only-btn" onclick="toggleEditorPanel()">◀ REDIGERA</button>
     <button id="back-to-world-btn" style="display:none; position:absolute; top:15px; left:15px; z-index:1002; background:#2a4d53; color:#8eb0b7; border:2px solid #447a82; padding:10px 12px; cursor:pointer; font-size:13px; font-weight:bold; border-radius:5px;" onclick="closeCityMap()">⬅ Till världskartan</button>
+    <button id="grid-toggle-btn" style="display:none; position:absolute; top:15px; left:170px; z-index:1002; background:#2a4d53; color:#8eb0b7; border:2px solid #447a82; padding:10px 12px; cursor:pointer; font-size:13px; font-weight:bold; border-radius:5px;" onclick="toggleGrid()">🔲 Rutnät</button>
 
     <div id="editor-panel" class="editor-hidden">
         <div class="panel-tabs">
@@ -527,7 +530,10 @@
         map.fitBounds(cityBounds);
 
         document.getElementById('back-to-world-btn').style.display = 'block';
+        document.getElementById('grid-toggle-btn').style.display = 'block';
+        document.getElementById('grid-label').style.display = gridEnabled ? 'block' : 'none';
         renderCityMarkers();
+        drawGrid();
     }
 
     function closeCityMap() {
@@ -537,8 +543,67 @@
         if (!map.hasLayer(worldImageLayer)) worldImageLayer.addTo(map);
         map.fitBounds(worldBounds);
         document.getElementById('back-to-world-btn').style.display = 'none';
+        document.getElementById('grid-toggle-btn').style.display = 'none';
+        document.getElementById('grid-label').style.display = 'none';
         renderMarkers();
+        drawGrid(); // rensar rutnätet
     }
+
+    // ============================================================
+    // NYTT: Meterrutnät i stadsvyn. Väljer automatiskt en "snygg"
+    // skala (1/2/5/10/20/50/100m osv) beroende på zoomnivå.
+    // ============================================================
+    var gridEnabled = true;
+    const GRID_NICE_STEPS = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000];
+
+    function toggleGrid() {
+        gridEnabled = !gridEnabled;
+        document.getElementById('grid-label').style.display = (gridEnabled && cityViewActive) ? 'block' : 'none';
+        drawGrid();
+    }
+
+    function drawGrid() {
+        const canvas = document.getElementById('grid-canvas');
+        const ctx = canvas.getContext('2d');
+        const size = map.getSize();
+        canvas.width = size.x;
+        canvas.height = size.y;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (!cityViewActive || !gridEnabled) return;
+
+        const p1 = map.latLngToContainerPoint([0, 0]);
+        const p2 = map.latLngToContainerPoint([0, 1]);
+        const pixlarPerMeter = Math.abs(p2.x - p1.x);
+        if (pixlarPerMeter < 0.3) return; // för utzoomat för att rutnätet ska ha någon mening
+
+        let spacing = GRID_NICE_STEPS[GRID_NICE_STEPS.length - 1];
+        for (const steg of GRID_NICE_STEPS) {
+            if (steg * pixlarPerMeter >= 45) { spacing = steg; break; }
+        }
+
+        const bounds = map.getBounds();
+        const minX = Math.floor(bounds.getWest() / spacing) * spacing;
+        const maxX = Math.ceil(bounds.getEast() / spacing) * spacing;
+        const minY = Math.floor(bounds.getSouth() / spacing) * spacing;
+        const maxY = Math.ceil(bounds.getNorth() / spacing) * spacing;
+
+        ctx.strokeStyle = 'rgba(255,255,255,0.28)';
+        ctx.lineWidth = 1;
+
+        for (let x = minX; x <= maxX; x += spacing) {
+            const pt = map.latLngToContainerPoint([0, x]);
+            ctx.beginPath(); ctx.moveTo(pt.x + 0.5, 0); ctx.lineTo(pt.x + 0.5, canvas.height); ctx.stroke();
+        }
+        for (let y = minY; y <= maxY; y += spacing) {
+            const pt = map.latLngToContainerPoint([y, 0]);
+            ctx.beginPath(); ctx.moveTo(0, pt.y + 0.5); ctx.lineTo(canvas.width, pt.y + 0.5); ctx.stroke();
+        }
+
+        document.getElementById('grid-label').innerText = "Rutnät: " + spacing + " m";
+    }
+
+    map.on('zoomend moveend resize', drawGrid);
 
     function renderCityMarkers() {
         const buildings = contentBank.buildings.filter(b => b.stad === currentCityName);
