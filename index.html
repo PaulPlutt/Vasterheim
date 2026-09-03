@@ -111,6 +111,16 @@
         .encounter-row .enc-hp-val { width: 50px; text-align: center; font-size: 12px; }
         .encounter-row .enc-down { color: #e74c3c; text-decoration: line-through; opacity: 0.6; }
         .encounter-row .enc-remove { background: none; border: none; color: #e74c3c; cursor: pointer; font-size: 14px; }
+
+        /* ---- NYTT: Fullt karaktärsblad (spelare) ---- */
+        #player-sheet-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.65); z-index: 3100; align-items: center; justify-content: center; }
+        #player-sheet-modal { background: #162a2e; border: 2px solid #2ecc71; border-radius: 8px; padding: 20px; width: 640px; max-width: 95vw; max-height: 90vh; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+        #player-sheet-modal h3 { margin: 0 0 4px 0; color: #2ecc71; }
+        .ps-section-title { color: #f1c40f; font-size: 12px; text-transform: uppercase; font-weight: bold; margin: 14px 0 4px 0; border-bottom: 1px solid #2a4d53; padding-bottom: 4px; }
+        .ps-section-title:first-of-type { margin-top: 4px; }
+        .ps-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+        .ps-grid .input-group { flex: 1; min-width: 90px; }
+        .ps-grid .input-group.wide { flex: 2; min-width: 160px; }
     </style>
 </head>
 <body>
@@ -132,7 +142,8 @@
     <div>
         <button id="add-place-btn" class="dm-only-btn" onclick="togglePlacingMode()">+ Lägg till plats</button>
         <button id="add-npc-btn" class="dm-only-btn" onclick="openNPCTab()">+ Lägg till invånare</button>
-        <button id="add-spelare-btn" class="dm-only-btn" onclick="openSpelareTab()">+ Lägg till spelare</button>
+        <button id="add-spelare-btn" class="dm-only-btn" onclick="openPlayerSheetModal(-1)">+ Lägg till spelare</button>
+        <button id="encounter-toggle-btn" class="dm-only-btn" style="font-size:12px; padding:8px 15px; border-radius:4px; background:#c0392b; cursor:pointer; font-weight:bold; border:none; color:white; margin-right:8px;" onclick="openEncounterPanel()">⚔️ Strid</button>
         <button id="dm-status" onclick="toggleDM()">🔒 DM LOGIN</button>
     </div>
 </div>
@@ -145,7 +156,6 @@
     <button id="toggle-editor-btn" class="dm-only-btn" onclick="toggleEditorPanel()">◀ REDIGERA</button>
     <button id="back-to-world-btn" style="display:none; position:absolute; top:15px; left:15px; z-index:1002; background:#2a4d53; color:#8eb0b7; border:2px solid #447a82; padding:10px 12px; cursor:pointer; font-size:13px; font-weight:bold; border-radius:5px;" onclick="closeCityMap()">⬅ Till världskartan</button>
     <button id="grid-toggle-btn" style="display:none; position:absolute; top:15px; left:170px; z-index:1002; background:#2a4d53; color:#8eb0b7; border:2px solid #447a82; padding:10px 12px; cursor:pointer; font-size:13px; font-weight:bold; border-radius:5px;" onclick="toggleGrid()">🔲 Rutnät</button>
-    <button id="encounter-toggle-btn" class="dm-only-btn" style="position:absolute; top:65px; right:15px; z-index:1002; background:#c0392b; color:white; border:2px solid #922b21; padding:10px 12px; cursor:pointer; font-size:13px; font-weight:bold; border-radius:5px;" onclick="openEncounterPanel()">⚔️ Strid</button>
 
     <div id="editor-panel" class="editor-hidden">
         <div class="panel-tabs">
@@ -308,34 +318,9 @@
         </div>
 
         <div id="spelare-tab-content" style="display:none;">
-            <input type="hidden" id="spelare-edit-index" value="-1">
-
-            <div class="editor-row">
-                <div class="input-group"><label>Namn</label><input type="text" id="spelare-name" placeholder="Spelarens karaktärsnamn"></div>
-            </div>
-            <div class="editor-row">
-                <div class="input-group"><label>Ras</label><input type="text" id="spelare-race"></div>
-                <div class="input-group"><label>Klass</label><input type="text" id="spelare-class"></div>
-                <div class="input-group"><label>Nivå</label><input type="number" id="spelare-level" min="1" max="20" style="width:60px;"></div>
-            </div>
-            <div class="editor-row">
-                <div class="input-group"><label>HP Max</label><input type="number" id="spelare-hpmax"></div>
-                <div class="input-group"><label>HP Nuvarande</label><input type="number" id="spelare-hpcur"></div>
-                <div class="input-group"><label>AC</label><input type="number" id="spelare-ac"></div>
-            </div>
-            <div class="editor-row">
-                <div class="input-group" style="flex:2;">
-                    <label>Status / Anteckningar (skador, tillstånd, viktigt att komma ihåg)</label>
-                    <textarea id="spelare-status" rows="4" placeholder="t.ex. Bröt vänster ben i fallet från tornet - nackdel på förflyttning tills det läkt"></textarea>
-                </div>
-            </div>
-
-            <button class="primary-save" onclick="saveSpelareToCloud()">SPARA SPELARE</button>
-            <button class="btn-delete" style="width:100%; padding:8px; border-radius:4px;" onclick="deleteSpelare()">RADERA VALD SPELARE</button>
-            <div id="spelare-save-status"></div>
-
+            <button class="primary-save" onclick="openPlayerSheetModal(-1)">+ NYTT KARAKTÄRSBLAD</button>
             <div style="margin-top:10px; border-top:1px solid #2a4d53; padding-top:10px;">
-                <label>Sparade spelare</label>
+                <label>Sparade spelare (klicka för att öppna hela bladet)</label>
                 <div id="spelare-list-items"><i style="padding:8px; display:block;">Inga spelare tillagda än.</i></div>
             </div>
         </div>
@@ -413,6 +398,119 @@
             <button style="background:#c0392b; color:white;" onclick="clearEncounter()">Avsluta strid</button>
             <button style="background:#2ecc71; color:#0b1d21;" onclick="nextEncounterTurn()">Nästa tur ▶</button>
         </div>
+    </div>
+</div>
+
+<div id="player-sheet-overlay">
+    <div id="player-sheet-modal">
+        <input type="hidden" id="ps-edit-index" value="-1">
+        <h3 id="ps-title">🧙 Karaktärsblad</h3>
+
+        <div class="ps-section-title">Status / Anteckningar (viktigast - skador, tillstånd)</div>
+        <textarea id="ps-status" rows="3" placeholder="t.ex. Bröt vänster ben i fallet från tornet - nackdel på förflyttning tills det läkt"></textarea>
+
+        <div class="ps-section-title">Grunduppgifter</div>
+        <div class="ps-grid">
+            <div class="input-group wide"><label>Karaktärsnamn</label><input type="text" id="ps-name"></div>
+            <div class="input-group"><label>Spelarens namn</label><input type="text" id="ps-playername"></div>
+        </div>
+        <div class="ps-grid">
+            <div class="input-group"><label>Ras</label><input type="text" id="ps-race"></div>
+            <div class="input-group"><label>Bakgrund</label><input type="text" id="ps-background"></div>
+            <div class="input-group"><label>Alignment</label><input type="text" id="ps-alignment"></div>
+        </div>
+        <div class="ps-grid">
+            <div class="input-group"><label>Klass</label><input type="text" id="ps-class"></div>
+            <div class="input-group"><label>Nivå</label><input type="number" id="ps-level" min="1" max="20"></div>
+            <div class="input-group"><label>XP</label><input type="text" id="ps-xp"></div>
+        </div>
+
+        <div class="ps-section-title">Attribut & Färdigheter</div>
+        <div class="ps-grid">
+            <div class="input-group"><label>STR</label><input type="number" id="ps-str"></div>
+            <div class="input-group"><label>DEX</label><input type="number" id="ps-dex"></div>
+            <div class="input-group"><label>CON</label><input type="number" id="ps-con"></div>
+            <div class="input-group"><label>INT</label><input type="number" id="ps-int"></div>
+            <div class="input-group"><label>WIS</label><input type="number" id="ps-wis"></div>
+            <div class="input-group"><label>CHA</label><input type="number" id="ps-cha"></div>
+        </div>
+        <div class="ps-grid">
+            <div class="input-group"><label>Initiativbonus</label><input type="number" id="ps-initbonus"></div>
+            <div class="input-group"><label>Kompetensbonus</label><input type="number" id="ps-profbonus"></div>
+            <div class="input-group"><label>Passiv Perception</label><input type="number" id="ps-pp"></div>
+            <div class="input-group"><label>Passiv Insight</label><input type="number" id="ps-pi"></div>
+            <div class="input-group"><label>Passiv Investigation</label><input type="number" id="ps-pinv"></div>
+        </div>
+        <div class="ps-grid">
+            <div class="input-group wide"><label>Sinnen (t.ex. Mörkersyn 18m)</label><input type="text" id="ps-senses"></div>
+        </div>
+        <div class="ps-grid">
+            <div class="input-group wide"><label>Räddningskast (fritext, t.ex. "DEX +5, WIS +3")</label><textarea id="ps-savingthrows" rows="2"></textarea></div>
+            <div class="input-group wide"><label>Färdigheter (fritext, t.ex. "Stealth +8, Perception +9")</label><textarea id="ps-skills" rows="2"></textarea></div>
+        </div>
+
+        <div class="ps-section-title">Stridsvärden</div>
+        <div class="ps-grid">
+            <div class="input-group"><label>AC</label><input type="number" id="ps-ac"></div>
+            <div class="input-group"><label>HP Max</label><input type="number" id="ps-hpmax"></div>
+            <div class="input-group"><label>HP Nuvarande</label><input type="number" id="ps-hpcur"></div>
+            <div class="input-group"><label>Temp HP</label><input type="number" id="ps-hptemp"></div>
+            <div class="input-group"><label>Fart</label><input type="text" id="ps-speed"></div>
+        </div>
+        <div class="ps-grid">
+            <div class="input-group"><label>Hit Dice</label><input type="text" id="ps-hitdice"></div>
+            <div class="input-group"><label>Dödsräddn. lyckade</label><input type="number" id="ps-deathsuccess" min="0" max="3"></div>
+            <div class="input-group"><label>Dödsräddn. misslyckade</label><input type="number" id="ps-deathfail" min="0" max="3"></div>
+        </div>
+
+        <div class="ps-section-title">Förmågor & Handlingar</div>
+        <div class="ps-grid">
+            <div class="input-group wide"><label>Förmågor & Drag (klass-/rasfunktioner)</label><textarea id="ps-features" rows="4"></textarea></div>
+        </div>
+        <div class="ps-grid">
+            <div class="input-group wide"><label>Handlingar (attacker, bonushandlingar, reaktioner)</label><textarea id="ps-actions" rows="4"></textarea></div>
+        </div>
+
+        <div class="ps-section-title">Utrustning</div>
+        <div class="ps-grid">
+            <div class="input-group wide"><label>Vapenattacker (Namn, Hit, Skada/Typ per rad)</label><textarea id="ps-weapons" rows="3"></textarea></div>
+        </div>
+        <div class="ps-grid">
+            <div class="input-group wide"><label>Övrig utrustning</label><textarea id="ps-equipment" rows="3"></textarea></div>
+        </div>
+        <div class="ps-grid">
+            <div class="input-group"><label>CP</label><input type="number" id="ps-cp"></div>
+            <div class="input-group"><label>SP</label><input type="number" id="ps-sp"></div>
+            <div class="input-group"><label>EP</label><input type="number" id="ps-ep"></div>
+            <div class="input-group"><label>GP</label><input type="number" id="ps-gp"></div>
+            <div class="input-group"><label>PP</label><input type="number" id="ps-currpp"></div>
+        </div>
+        <div class="ps-grid">
+            <div class="input-group wide"><label>Attunade magiska föremål</label><textarea id="ps-magicitems" rows="2"></textarea></div>
+        </div>
+
+        <div class="ps-section-title">Besvärjelser</div>
+        <div class="ps-grid">
+            <div class="input-group"><label>Besvärjelseklass</label><input type="text" id="ps-spellclass"></div>
+            <div class="input-group"><label>Förmåga</label><input type="text" id="ps-spellability"></div>
+            <div class="input-group"><label>Räddnings-DC</label><input type="number" id="ps-savedc"></div>
+            <div class="input-group"><label>Attackbonus</label><input type="number" id="ps-atkbonus"></div>
+        </div>
+        <div class="ps-grid">
+            <div class="input-group wide"><label>Besvärjelselista</label><textarea id="ps-spells" rows="3"></textarea></div>
+        </div>
+
+        <div class="ps-section-title">Bakgrund & Personlighet</div>
+        <div class="ps-grid">
+            <div class="input-group wide"><label>Utseende, bakgrundshistoria, personlighet, ideal, band, brister, allierade</label><textarea id="ps-backgroundtext" rows="5"></textarea></div>
+        </div>
+
+        <div class="modal-btn-row">
+            <button style="background:#2a4d53; color:white;" onclick="closePlayerSheetModal()">Stäng</button>
+            <button style="background:#c0392b; color:white;" onclick="deleteSpelare()">Radera</button>
+            <button style="background:#2ecc71; color:#0b1d21;" onclick="saveSpelareToCloud()">Spara</button>
+        </div>
+        <div id="spelare-save-status"></div>
     </div>
 </div>
 
@@ -1258,94 +1356,116 @@
     // status/skador ska bestå mellan sessioner tills DM ändrar dem.
     // ============================================================
     var savedSpelare = [];
-    const SPELARE_HEADERS = ["Namn", "Ras", "Klass", "Niva", "HPMax", "HPNuvarande", "AC", "Status"];
+    const SPELARE_HEADERS = [
+        "Namn","SpelareNamn","Ras","Bakgrund","Alignment","Klass","Niva","XP",
+        "STR","DEX","CON","INT","WIS","CHA","InitBonus","ProfBonus",
+        "PassivPerception","PassivInsight","PassivInvestigation","Sinnen","Raddningskast","Fardigheter",
+        "AC","HPMax","HPNuvarande","HPTemp","Fart","HitDice","DodsraddningLyckade","DodsraddningMisslyckade",
+        "FormagorDrag","Handlingar","Vapen","Utrustning","CP","SP","EP","GP","PPMynt","MagiskaForemal",
+        "BesvarjelseKlass","BesvarjelseFormaga","RaddningsDC","AttackBonus","Besvarjelselista",
+        "BakgrundPersonlighet","Status"
+    ];
 
     function spelareToRow(s) {
-        return [s.name, s.race, s.klass, s.niva, s.hpMax, s.hpCur, s.ac, s.status];
+        return [
+            s.name, s.playerName, s.race, s.background, s.alignment, s.klass, s.niva, s.xp,
+            s.str, s.dex, s.con, s.int, s.wis, s.cha, s.initBonus, s.profBonus,
+            s.pp, s.pi, s.pinv, s.senses, s.savingThrows, s.skills,
+            s.ac, s.hpMax, s.hpCur, s.hpTemp, s.speed, s.hitDice, s.deathSuccess, s.deathFail,
+            s.features, s.actions, s.weapons, s.equipment, s.cp, s.sp, s.ep, s.gp, s.currPP, s.magicItems,
+            s.spellClass, s.spellAbility, s.saveDC, s.atkBonus, s.spells,
+            s.backgroundText, s.status
+        ];
     }
+
+    function rowToSpelare(row) {
+        const g = i => row[i] || "";
+        return {
+            name: g(0), playerName: g(1), race: g(2), background: g(3), alignment: g(4), klass: g(5), niva: g(6), xp: g(7),
+            str: g(8), dex: g(9), con: g(10), int: g(11), wis: g(12), cha: g(13), initBonus: g(14), profBonus: g(15),
+            pp: g(16), pi: g(17), pinv: g(18), senses: g(19), savingThrows: g(20), skills: g(21),
+            ac: g(22), hpMax: g(23), hpCur: g(24), hpTemp: g(25), speed: g(26), hitDice: g(27), deathSuccess: g(28), deathFail: g(29),
+            features: g(30), actions: g(31), weapons: g(32), equipment: g(33), cp: g(34), sp: g(35), ep: g(36), gp: g(37), currPP: g(38), magicItems: g(39),
+            spellClass: g(40), spellAbility: g(41), saveDC: g(42), atkBonus: g(43), spells: g(44),
+            backgroundText: g(45), status: g(46)
+        };
+    }
+
+    const PS_FIELD_MAP = {
+        name:'ps-name', playerName:'ps-playername', race:'ps-race', background:'ps-background', alignment:'ps-alignment',
+        klass:'ps-class', niva:'ps-level', xp:'ps-xp',
+        str:'ps-str', dex:'ps-dex', con:'ps-con', int:'ps-int', wis:'ps-wis', cha:'ps-cha',
+        initBonus:'ps-initbonus', profBonus:'ps-profbonus',
+        pp:'ps-pp', pi:'ps-pi', pinv:'ps-pinv', senses:'ps-senses', savingThrows:'ps-savingthrows', skills:'ps-skills',
+        ac:'ps-ac', hpMax:'ps-hpmax', hpCur:'ps-hpcur', hpTemp:'ps-hptemp', speed:'ps-speed', hitDice:'ps-hitdice',
+        deathSuccess:'ps-deathsuccess', deathFail:'ps-deathfail',
+        features:'ps-features', actions:'ps-actions', weapons:'ps-weapons', equipment:'ps-equipment',
+        cp:'ps-cp', sp:'ps-sp', ep:'ps-ep', gp:'ps-gp', currPP:'ps-currpp', magicItems:'ps-magicitems',
+        spellClass:'ps-spellclass', spellAbility:'ps-spellability', saveDC:'ps-savedc', atkBonus:'ps-atkbonus', spells:'ps-spells',
+        backgroundText:'ps-backgroundtext', status:'ps-status'
+    };
 
     async function loadSpelareFromCloud() {
         try {
             const response = await fetch(scriptURL + "?sheet=Spelare");
             const data = await response.json();
-            savedSpelare = (data || []).slice(1).filter(row => row && row[0]).map(row => ({
-                name: row[0] || "", race: row[1] || "", klass: row[2] || "", niva: row[3] || "",
-                hpMax: row[4] || "", hpCur: row[5] || "", ac: row[6] || "", status: row[7] || ""
-            }));
+            savedSpelare = (data || []).slice(1).filter(row => row && row[0]).map(rowToSpelare);
             renderSpelareList();
         } catch (e) { console.error("Kunde inte ladda spelare", e); }
     }
 
+    function openPlayerSheetModal(idx) {
+        document.getElementById('ps-edit-index').value = idx;
+        const s = idx > -1 ? savedSpelare[idx] : {};
+        document.getElementById('ps-title').innerText = idx > -1 ? "🧙 " + s.name : "🧙 Nytt karaktärsblad";
+        Object.keys(PS_FIELD_MAP).forEach(key => {
+            const el = document.getElementById(PS_FIELD_MAP[key]);
+            if (el) el.value = s[key] || "";
+        });
+        document.getElementById('player-sheet-overlay').style.display = 'flex';
+    }
+    function closePlayerSheetModal() {
+        document.getElementById('player-sheet-overlay').style.display = 'none';
+    }
+
     async function saveSpelareToCloud() {
-        const name = document.getElementById('spelare-name').value.trim();
+        const name = document.getElementById('ps-name').value.trim();
         if (!name) return alert("Skriv karaktärens namn!");
 
-        const s = {
-            name,
-            race: document.getElementById('spelare-race').value,
-            klass: document.getElementById('spelare-class').value,
-            niva: document.getElementById('spelare-level').value,
-            hpMax: document.getElementById('spelare-hpmax').value,
-            hpCur: document.getElementById('spelare-hpcur').value,
-            ac: document.getElementById('spelare-ac').value,
-            status: document.getElementById('spelare-status').value
-        };
+        const s = {};
+        Object.keys(PS_FIELD_MAP).forEach(key => {
+            const el = document.getElementById(PS_FIELD_MAP[key]);
+            s[key] = el ? el.value : "";
+        });
 
-        const idx = parseInt(document.getElementById('spelare-edit-index').value);
+        const idx = parseInt(document.getElementById('ps-edit-index').value);
         if (idx > -1) savedSpelare[idx] = s; else savedSpelare.push(s);
 
         document.getElementById('spelare-save-status').innerText = "📤 Sparar...";
         const output = [SPELARE_HEADERS, ...savedSpelare.map(spelareToRow)];
         await fetch(scriptURL + "?sheet=Spelare", { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
 
-        document.getElementById('spelare-edit-index').value = "-1";
-        clearSpelareForm();
-        renderSpelareList();
         document.getElementById('spelare-save-status').innerText = "✅ Sparad";
+        renderSpelareList();
+        closePlayerSheetModal();
     }
 
     async function deleteSpelare() {
-        const idx = parseInt(document.getElementById('spelare-edit-index').value);
-        if (!(idx > -1)) return alert("Klicka på en sparad spelare i listan nedan för att välja vilken som ska raderas.");
+        const idx = parseInt(document.getElementById('ps-edit-index').value);
+        if (!(idx > -1)) return alert("Öppna en sparad spelare från listan för att kunna radera den.");
         if (!confirm("Radera " + savedSpelare[idx].name + "?")) return;
 
         savedSpelare.splice(idx, 1);
-        document.getElementById('spelare-save-status').innerText = "📤 Raderar...";
         const output = [SPELARE_HEADERS, ...savedSpelare.map(spelareToRow)];
         await fetch(scriptURL + "?sheet=Spelare", { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
 
-        document.getElementById('spelare-edit-index').value = "-1";
-        clearSpelareForm();
         renderSpelareList();
-        document.getElementById('spelare-save-status').innerText = "✅ Raderad";
-    }
-
-    function clearSpelareForm() {
-        ['spelare-name','spelare-race','spelare-class','spelare-level','spelare-hpmax','spelare-hpcur','spelare-ac','spelare-status']
-            .forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
+        closePlayerSheetModal();
     }
 
     function openSpelareTab() {
         switchTab('spelare');
         setEditorOpen(true);
-        document.getElementById('spelare-edit-index').value = "-1";
-        clearSpelareForm();
-        document.getElementById('spelare-name').focus();
-    }
-
-    function prepareEditSpelare(i) {
-        const s = savedSpelare[i];
-        switchTab('spelare');
-        setEditorOpen(true);
-        document.getElementById('spelare-name').value = s.name;
-        document.getElementById('spelare-race').value = s.race;
-        document.getElementById('spelare-class').value = s.klass;
-        document.getElementById('spelare-level').value = s.niva;
-        document.getElementById('spelare-hpmax').value = s.hpMax;
-        document.getElementById('spelare-hpcur').value = s.hpCur;
-        document.getElementById('spelare-ac').value = s.ac;
-        document.getElementById('spelare-status').value = s.status;
-        document.getElementById('spelare-edit-index').value = i;
     }
 
     function renderSpelareList() {
@@ -1355,9 +1475,9 @@
             return;
         }
         container.innerHTML = savedSpelare.map((s, i) => `
-            <div class="npc-list-row" onclick="prepareEditSpelare(${i})">
-                <b style="color:#2ecc71;">${s.name}</b> <span>(${s.race || '?'} ${s.klass || '?'}, niv\u00e5 ${s.niva || '?'})</span><br>
-                <span>❤️ ${s.hpCur || '?'}/${s.hpMax || '?'} HP · AC ${s.ac || '?'}</span>
+            <div class="npc-list-row" onclick="openPlayerSheetModal(${i})">
+                <b style="color:#2ecc71;">${s.name}</b> <span>(${s.race || '?'} ${s.klass || '?'}, nivå ${s.niva || '?'})</span><br>
+                <span>❤️ ${s.hpCur || '?'}/${s.hpMax || '?'} HP · AC ${s.ac || '?'} · 👁️ PP ${s.pp || '?'}</span>
                 ${s.status ? `<br><span style="color:#f1c40f;">⚠ ${s.status}</span>` : ''}
             </div>
         `).join('');
