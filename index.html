@@ -132,6 +132,7 @@
     <div>
         <button id="add-place-btn" class="dm-only-btn" onclick="togglePlacingMode()">+ Lägg till plats</button>
         <button id="add-npc-btn" class="dm-only-btn" onclick="openNPCTab()">+ Lägg till invånare</button>
+        <button id="add-spelare-btn" class="dm-only-btn" onclick="openSpelareTab()">+ Lägg till spelare</button>
         <button id="dm-status" onclick="toggleDM()">🔒 DM LOGIN</button>
     </div>
 </div>
@@ -150,6 +151,7 @@
         <div class="panel-tabs">
             <button id="tab-place-btn" class="panel-tab active" onclick="switchTab('place')">📍 PLATS</button>
             <button id="tab-npc-btn" class="panel-tab" onclick="switchTab('npc')">👤 INVÅNARE</button>
+            <button id="tab-spelare-btn" class="panel-tab" onclick="switchTab('spelare')">🧙 SPELARE</button>
         </div>
 
         <div id="place-tab-content">
@@ -302,6 +304,39 @@
             <div style="margin-top:10px; border-top:1px solid #2a4d53; padding-top:10px;">
                 <label>Sparade invånare</label>
                 <div id="npc-list-items"><i style="padding:8px; display:block;">Inga invånare sparade än.</i></div>
+            </div>
+        </div>
+
+        <div id="spelare-tab-content" style="display:none;">
+            <input type="hidden" id="spelare-edit-index" value="-1">
+
+            <div class="editor-row">
+                <div class="input-group"><label>Namn</label><input type="text" id="spelare-name" placeholder="Spelarens karaktärsnamn"></div>
+            </div>
+            <div class="editor-row">
+                <div class="input-group"><label>Ras</label><input type="text" id="spelare-race"></div>
+                <div class="input-group"><label>Klass</label><input type="text" id="spelare-class"></div>
+                <div class="input-group"><label>Nivå</label><input type="number" id="spelare-level" min="1" max="20" style="width:60px;"></div>
+            </div>
+            <div class="editor-row">
+                <div class="input-group"><label>HP Max</label><input type="number" id="spelare-hpmax"></div>
+                <div class="input-group"><label>HP Nuvarande</label><input type="number" id="spelare-hpcur"></div>
+                <div class="input-group"><label>AC</label><input type="number" id="spelare-ac"></div>
+            </div>
+            <div class="editor-row">
+                <div class="input-group" style="flex:2;">
+                    <label>Status / Anteckningar (skador, tillstånd, viktigt att komma ihåg)</label>
+                    <textarea id="spelare-status" rows="4" placeholder="t.ex. Bröt vänster ben i fallet från tornet - nackdel på förflyttning tills det läkt"></textarea>
+                </div>
+            </div>
+
+            <button class="primary-save" onclick="saveSpelareToCloud()">SPARA SPELARE</button>
+            <button class="btn-delete" style="width:100%; padding:8px; border-radius:4px;" onclick="deleteSpelare()">RADERA VALD SPELARE</button>
+            <div id="spelare-save-status"></div>
+
+            <div style="margin-top:10px; border-top:1px solid #2a4d53; padding-top:10px;">
+                <label>Sparade spelare</label>
+                <div id="spelare-list-items"><i style="padding:8px; display:block;">Inga spelare tillagda än.</i></div>
             </div>
         </div>
     </div>
@@ -995,8 +1030,10 @@
     function switchTab(tab) {
         document.getElementById('tab-place-btn').classList.toggle('active', tab === 'place');
         document.getElementById('tab-npc-btn').classList.toggle('active', tab === 'npc');
+        document.getElementById('tab-spelare-btn').classList.toggle('active', tab === 'spelare');
         document.getElementById('place-tab-content').style.display = tab === 'place' ? 'flex' : 'none';
         document.getElementById('npc-tab-content').style.display = tab === 'npc' ? 'flex' : 'none';
+        document.getElementById('spelare-tab-content').style.display = tab === 'spelare' ? 'flex' : 'none';
     }
 
     function openNPCTab() {
@@ -1211,6 +1248,117 @@
             <div class="npc-list-row" onclick="prepareEditNPC(${i})">
                 <b style="color:#2ecc71;">${n.name}</b> <span>(${n.race || '?'}, ${n.age || '?'} år, ${n.job || '?'})</span><br>
                 <span>📍 ${n.building ? n.building + ', ' : ''}${n.place || 'Ingen plats angiven'}</span>
+            </div>
+        `).join('');
+    }
+
+    // ============================================================
+    // NYTT: Spelarkaraktärer. Egen flik, eget blad ("Spelare"),
+    // sparas permanent (till skillnad från stridslistan) eftersom
+    // status/skador ska bestå mellan sessioner tills DM ändrar dem.
+    // ============================================================
+    var savedSpelare = [];
+    const SPELARE_HEADERS = ["Namn", "Ras", "Klass", "Niva", "HPMax", "HPNuvarande", "AC", "Status"];
+
+    function spelareToRow(s) {
+        return [s.name, s.race, s.klass, s.niva, s.hpMax, s.hpCur, s.ac, s.status];
+    }
+
+    async function loadSpelareFromCloud() {
+        try {
+            const response = await fetch(scriptURL + "?sheet=Spelare");
+            const data = await response.json();
+            savedSpelare = (data || []).slice(1).filter(row => row && row[0]).map(row => ({
+                name: row[0] || "", race: row[1] || "", klass: row[2] || "", niva: row[3] || "",
+                hpMax: row[4] || "", hpCur: row[5] || "", ac: row[6] || "", status: row[7] || ""
+            }));
+            renderSpelareList();
+        } catch (e) { console.error("Kunde inte ladda spelare", e); }
+    }
+
+    async function saveSpelareToCloud() {
+        const name = document.getElementById('spelare-name').value.trim();
+        if (!name) return alert("Skriv karaktärens namn!");
+
+        const s = {
+            name,
+            race: document.getElementById('spelare-race').value,
+            klass: document.getElementById('spelare-class').value,
+            niva: document.getElementById('spelare-level').value,
+            hpMax: document.getElementById('spelare-hpmax').value,
+            hpCur: document.getElementById('spelare-hpcur').value,
+            ac: document.getElementById('spelare-ac').value,
+            status: document.getElementById('spelare-status').value
+        };
+
+        const idx = parseInt(document.getElementById('spelare-edit-index').value);
+        if (idx > -1) savedSpelare[idx] = s; else savedSpelare.push(s);
+
+        document.getElementById('spelare-save-status').innerText = "📤 Sparar...";
+        const output = [SPELARE_HEADERS, ...savedSpelare.map(spelareToRow)];
+        await fetch(scriptURL + "?sheet=Spelare", { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
+
+        document.getElementById('spelare-edit-index').value = "-1";
+        clearSpelareForm();
+        renderSpelareList();
+        document.getElementById('spelare-save-status').innerText = "✅ Sparad";
+    }
+
+    async function deleteSpelare() {
+        const idx = parseInt(document.getElementById('spelare-edit-index').value);
+        if (!(idx > -1)) return alert("Klicka på en sparad spelare i listan nedan för att välja vilken som ska raderas.");
+        if (!confirm("Radera " + savedSpelare[idx].name + "?")) return;
+
+        savedSpelare.splice(idx, 1);
+        document.getElementById('spelare-save-status').innerText = "📤 Raderar...";
+        const output = [SPELARE_HEADERS, ...savedSpelare.map(spelareToRow)];
+        await fetch(scriptURL + "?sheet=Spelare", { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
+
+        document.getElementById('spelare-edit-index').value = "-1";
+        clearSpelareForm();
+        renderSpelareList();
+        document.getElementById('spelare-save-status').innerText = "✅ Raderad";
+    }
+
+    function clearSpelareForm() {
+        ['spelare-name','spelare-race','spelare-class','spelare-level','spelare-hpmax','spelare-hpcur','spelare-ac','spelare-status']
+            .forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
+    }
+
+    function openSpelareTab() {
+        switchTab('spelare');
+        setEditorOpen(true);
+        document.getElementById('spelare-edit-index').value = "-1";
+        clearSpelareForm();
+        document.getElementById('spelare-name').focus();
+    }
+
+    function prepareEditSpelare(i) {
+        const s = savedSpelare[i];
+        switchTab('spelare');
+        setEditorOpen(true);
+        document.getElementById('spelare-name').value = s.name;
+        document.getElementById('spelare-race').value = s.race;
+        document.getElementById('spelare-class').value = s.klass;
+        document.getElementById('spelare-level').value = s.niva;
+        document.getElementById('spelare-hpmax').value = s.hpMax;
+        document.getElementById('spelare-hpcur').value = s.hpCur;
+        document.getElementById('spelare-ac').value = s.ac;
+        document.getElementById('spelare-status').value = s.status;
+        document.getElementById('spelare-edit-index').value = i;
+    }
+
+    function renderSpelareList() {
+        const container = document.getElementById('spelare-list-items');
+        if (savedSpelare.length === 0) {
+            container.innerHTML = '<i style="padding:8px; display:block;">Inga spelare tillagda än.</i>';
+            return;
+        }
+        container.innerHTML = savedSpelare.map((s, i) => `
+            <div class="npc-list-row" onclick="prepareEditSpelare(${i})">
+                <b style="color:#2ecc71;">${s.name}</b> <span>(${s.race || '?'} ${s.klass || '?'}, niv\u00e5 ${s.niva || '?'})</span><br>
+                <span>❤️ ${s.hpCur || '?'}/${s.hpMax || '?'} HP · AC ${s.ac || '?'}</span>
+                ${s.status ? `<br><span style="color:#f1c40f;">⚠ ${s.status}</span>` : ''}
             </div>
         `).join('');
     }
@@ -1509,15 +1657,21 @@
             const dexMod = Math.floor((m.dexterity - 10) / 2);
             document.getElementById('enc-add-initbonus').value = dexMod;
             _lastFetchedMonsterInfo = `${m.type || ''}, CR ${m.challenge_rating != null ? m.challenge_rating : '?'} — STR ${m.strength} DEX ${m.dexterity} CON ${m.constitution} INT ${m.intelligence} WIS ${m.wisdom} CHA ${m.charisma}`;
+            _lastFetchedMonsterActions = (m.actions && m.actions.length)
+                ? m.actions.map(a => `• ${a.name}: ${a.desc}`).join('\n')
+                : null;
         } catch (e) {
             alert("Kunde inte hämta monstret just nu. Försök igen om en stund.");
         }
     }
     var _lastFetchedMonsterInfo = null;
+    var _lastFetchedMonsterActions = null;
 
     function populateEncounterDatalist() {
         const dl = document.getElementById('enc-npc-datalist');
-        dl.innerHTML = savedNPCs.map(n => `<option value="${n.name}">`).join('');
+        const npcOptions = savedNPCs.map(n => n.name);
+        const spelareOptions = savedSpelare.map(s => s.name);
+        dl.innerHTML = [...npcOptions, ...spelareOptions].map(n => `<option value="${n}">`).join('');
     }
 
     function openEncounterPanel() {
@@ -1542,8 +1696,16 @@
 
         let hp = parseInt(document.getElementById('enc-add-hp').value) || 10;
         let ac = document.getElementById('enc-add-ac').value;
+        let spelareIdx = -1;
+
+        const matchSpelare = savedSpelare.findIndex(s => s.name === namn);
         const matchNPC = savedNPCs.find(n => n.name === namn);
-        if (matchNPC && !ac) {
+        if (matchSpelare > -1 && !ac) {
+            const s = savedSpelare[matchSpelare];
+            hp = parseInt(s.hpCur) || parseInt(s.hpMax) || hp;
+            ac = s.ac || "";
+            spelareIdx = matchSpelare;
+        } else if (matchNPC && !ac) {
             if (matchNPC.hp) hp = parseInt(matchNPC.hp) || hp;
             ac = matchNPC.ac || "";
         }
@@ -1557,8 +1719,9 @@
         }
 
         const info = (namn === document.getElementById('enc-monster-search-input').value.trim()) ? _lastFetchedMonsterInfo : null;
+        const actions = (namn === document.getElementById('enc-monster-search-input').value.trim()) ? _lastFetchedMonsterActions : null;
 
-        encounterState.combatants.push({ namn, hpMax: hp, hp: hp, ac, init, nedslagen: false, info, expanded: false });
+        encounterState.combatants.push({ namn, hpMax: hp, hp: hp, ac, init, nedslagen: false, info, actions, expanded: false, spelareIdx });
         encounterState.combatants.sort((a, b) => b.init - a.init);
         encounterState.turnIndex = 0;
         encounterState.round = 1;
@@ -1568,7 +1731,22 @@
         document.getElementById('enc-add-init').value = "";
         document.getElementById('enc-monster-search-input').value = "";
         _lastFetchedMonsterInfo = null;
+        _lastFetchedMonsterActions = null;
         renderEncounterList();
+    }
+
+    function sparaHPTillSpelare(i) {
+        const c = encounterState.combatants[i];
+        if (c.spelareIdx == null || c.spelareIdx < 0) return;
+        savedSpelare[c.spelareIdx].hpCur = c.hp;
+        saveSpelareToCloud_fromEncounter(c.spelareIdx);
+    }
+
+    async function saveSpelareToCloud_fromEncounter(idx) {
+        const output = [SPELARE_HEADERS, ...savedSpelare.map(spelareToRow)];
+        await fetch(scriptURL + "?sheet=Spelare", { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
+        renderSpelareList();
+        alert("HP sparat till " + savedSpelare[idx].name + "s karaktärsblad.");
     }
 
     function adjustEncounterHP(idx, delta) {
@@ -1616,23 +1794,26 @@
             <div class="encounter-row ${i === encounterState.turnIndex ? 'active-turn' : ''}" style="flex-direction:column; align-items:stretch;">
                 <div style="display:flex; align-items:center; gap:8px;">
                     <div class="enc-init">${c.init}</div>
-                    <div class="enc-name ${c.nedslagen ? 'enc-down' : ''}" style="${c.info ? 'cursor:pointer;' : ''}" ${c.info ? `onclick="toggleEncounterInfo(${i})"` : ''}>
-                        ${c.namn}${c.ac ? ' <span style="color:#8eb0b7; font-weight:normal;">(AC ' + c.ac + ')</span>' : ''}${c.info ? ' <span style="color:#9b59b6;">ℹ️</span>' : ''}
+                    <div class="enc-name ${c.nedslagen ? 'enc-down' : ''}" style="${(c.info || c.actions) ? 'cursor:pointer;' : ''}" ${(c.info || c.actions) ? `onclick="toggleEncounterInfo(${i})"` : ''}>
+                        ${c.namn}${c.ac ? ' <span style="color:#8eb0b7; font-weight:normal;">(AC ' + c.ac + ')</span>' : ''}${(c.info || c.actions) ? ' <span style="color:#9b59b6;">ℹ️</span>' : ''}
                     </div>
                     <div class="enc-hp-controls">
                         <button onclick="adjustEncounterHP(${i}, -1)">−</button>
                         <span class="enc-hp-val">${c.hp}/${c.hpMax}</span>
                         <button onclick="adjustEncounterHP(${i}, 1)">+</button>
                     </div>
+                    ${c.spelareIdx != null && c.spelareIdx > -1 ? `<button class="enc-remove" title="Spara HP till spelarens karaktärsblad" onclick="sparaHPTillSpelare(${i})">💾</button>` : ''}
                     <button class="enc-remove" onclick="removeEncounterCombatant(${i})">✕</button>
                 </div>
                 ${c.expanded && c.info ? `<div style="font-size:11px; color:#8eb0b7; padding-left:34px; padding-top:2px;">${c.info}</div>` : ''}
+                ${c.expanded && c.actions ? `<div style="font-size:11px; color:#8eb0b7; padding-left:34px; padding-top:4px; white-space:pre-line;">${c.actions}</div>` : ''}
             </div>
         `).join('');
     }
 
     loadFromCloud();
     loadNPCsFromCloud();
+    loadSpelareFromCloud();
     loadContentBank();
 </script>
 </body>
