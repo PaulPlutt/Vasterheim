@@ -670,7 +670,9 @@
             stad: r[0] || "", namn: r[1] || "", typ: r[2] || "", yrke: r[3] || "",
             antal: parseInt(r[4]) || 1,
             x: (r[5] !== undefined && r[5] !== "") ? parseFloat(r[5]) : null,
-            y: (r[6] !== undefined && r[6] !== "") ? parseFloat(r[6]) : null
+            y: (r[6] !== undefined && r[6] !== "") ? parseFloat(r[6]) : null,
+            bredd: (r[7] !== undefined && r[7] !== "") ? parseFloat(r[7]) : null,
+            djup: (r[8] !== undefined && r[8] !== "") ? parseFloat(r[8]) : null
         })).filter(b => b.stad && b.namn);
 
         // Byggnadstyper: Typ, Vikt, Vanligt yrke, Minsta befolkning, Max normalt, Max storstad
@@ -699,6 +701,14 @@
     var currentCityName = null;
     var CITY_CANVAS_SIZE = 1000;
 
+    // Färg per byggnadstyp - samma palett som stadsgeneratorn (p5.js), för konsekvens
+    const TYP_FARG = {
+        "Bostad": "#8b5a2b", "Handel/Butik": "#daa520", "Taverna/Värdshus": "#b22222",
+        "Hantverk": "#696969", "Religiös": "#ff8c00", "Vakt/Säkerhet": "#191970",
+        "Stadshus/Rådhus": "#464678", "Övrigt": "#556b2f"
+    };
+    function fargForTyp(typ) { return TYP_FARG[typ] || "#f1c40f"; }
+
     function ensureBuildingCoords(cityName) {
         let changed = false;
         contentBank.buildings.filter(b => b.stad === cityName).forEach(b => {
@@ -712,8 +722,8 @@
     }
 
     async function saveBuildingsToCloud() {
-        const BUILDING_HEADERS = ["Stad", "Byggnadsnamn", "Typ", "Yrke", "Ungefär antal invånare", "X", "Y"];
-        const output = [BUILDING_HEADERS, ...contentBank.buildings.map(b => [b.stad, b.namn, b.typ, b.yrke, b.antal, b.x, b.y])];
+        const BUILDING_HEADERS = ["Stad", "Byggnadsnamn", "Typ", "Yrke", "Ungefär antal invånare", "X", "Y", "Bredd", "Djup"];
+        const output = [BUILDING_HEADERS, ...contentBank.buildings.map(b => [b.stad, b.namn, b.typ, b.yrke, b.antal, b.x, b.y, b.bredd || "", b.djup || ""])];
         await fetch(scriptURL + "?sheet=Byggnader", { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
     }
 
@@ -817,10 +827,20 @@
         const buildings = contentBank.buildings.filter(b => b.stad === currentCityName);
         buildings.forEach(b => {
             const residents = savedNPCs.filter(n => n.place === currentCityName && n.building === b.namn);
-            const icon = L.divIcon({
-                className: '', html: `<div style="width:16px;height:16px;border-radius:50%;background:#f1c40f;border:2px solid #0b1d21;"></div>`,
-                iconSize: [16, 16], iconAnchor: [8, 8]
-            });
+
+            // Verklig storlek i meter (fallback till rimliga standardmått om byggnaden saknar data,
+            // t.ex. äldre handinlagda byggnader från innan Bredd/Djup fanns).
+            const bredd = (b.bredd && b.bredd > 0) ? b.bredd : 8;
+            const djup = (b.djup && b.djup > 0) ? b.djup : 10;
+            const farg = fargForTyp(b.typ);
+
+            // Rektangeln ritas i verkliga kartkoordinater (meter) - skalar alltså naturligt
+            // med zoom, till skillnad från en fast pixelstor prick som alltid överlappar lika mycket.
+            const bounds = [
+                [b.y - djup/2, b.x - bredd/2],
+                [b.y + djup/2, b.x + bredd/2]
+            ];
+
             let content = `<div style="color:white;"><b style="color:#2ecc71; font-size:1.1em;">${b.namn}</b><br><span style="color:#8eb0b7; font-size:0.85em;">${b.typ}${b.yrke ? ' · ' + b.yrke : ''}</span>`;
             if (residents.length) {
                 content += `<div style="margin-top:8px; border-top:1px solid #2a4d53; padding-top:6px;"><b>Invånare:</b><ul style="margin:4px 0 0 0; padding-left:18px;">`;
@@ -830,7 +850,10 @@
                 content += `<p class="popup-desc">Ingen registrerad invånare här än.</p>`;
             }
             content += `</div>`;
-            L.marker([b.y, b.x], { icon }).addTo(map).bindPopup(content, { maxWidth: 260 });
+
+            L.rectangle(bounds, {
+                color: "#0b1d21", weight: 1, fillColor: farg, fillOpacity: 0.9
+            }).addTo(map).bindPopup(content, { maxWidth: 260 });
         });
     }
 
@@ -1723,8 +1746,8 @@
         await fetch(scriptURL + "?sheet=Invanare", { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
 
         if (newBuildings.length) {
-            const BUILDING_HEADERS = ["Stad", "Byggnadsnamn", "Typ", "Yrke", "Ungefär antal invånare", "X", "Y"];
-            const buildingOutput = [BUILDING_HEADERS, ...contentBank.buildings.map(b => [b.stad, b.namn, b.typ, b.yrke, b.antal, b.x != null ? b.x : "", b.y != null ? b.y : ""])];
+            const BUILDING_HEADERS = ["Stad", "Byggnadsnamn", "Typ", "Yrke", "Ungefär antal invånare", "X", "Y", "Bredd", "Djup"];
+            const buildingOutput = [BUILDING_HEADERS, ...contentBank.buildings.map(b => [b.stad, b.namn, b.typ, b.yrke, b.antal, b.x != null ? b.x : "", b.y != null ? b.y : "", b.bredd || "", b.djup || ""])];
             await fetch(scriptURL + "?sheet=Byggnader", { method: 'POST', mode: 'no-cors', body: JSON.stringify(buildingOutput) });
         }
 
