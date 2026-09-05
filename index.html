@@ -260,8 +260,8 @@
                 </div>
             </div>
             <div class="editor-row">
-                <div class="input-group"><label>Plats (stad/by)</label>
-                    <select id="npc-place"><option value="">– Ingen plats vald –</option></select>
+                <div class="input-group"><label>Plats (låst till öppen stad)</label>
+                    <input type="text" id="npc-place" readonly style="background:#1a2e33; cursor:not-allowed;">
                 </div>
                 <div class="input-group"><label>Byggnad</label>
                     <select id="npc-building"><option value="">– Välj plats först –</option></select>
@@ -685,12 +685,19 @@
         contentBank.relationTypes = relationstyper.map(r => r[0]).filter(Boolean);
     }
 
-    // ---- NYTT: Byggnader hämtas för sig, separat från de lätta referensflikarna ovan,
-    // eftersom den här fliken kan bli stor (t.ex. importerade städer med tusentals rader)
-    // och inte ska riskera att dra ner/tajma ut de andra flikarnas gemensamma anrop.
-    async function loadBuildingsFromCloud() {
+    // ---- NYTT: Byggnader och Invånare hämtas PER STAD, i egna flikar
+    // ("Byggnader_Bergvik", "Invanare_Bergvik" osv), och laddas bara när du
+    // faktiskt öppnar den staden - inte allihop på en gång vid appstart.
+    // Det gör att en enskild stor stad aldrig kan tynga ner alla andra.
+    function sheetSuffix(cityName) {
+        return (cityName || "").replace(/[:\\\/\?\*\[\]']/g, "").trim().substring(0, 80) || "Okand";
+    }
+
+    var loadedCityName = null; // vilken stads data som just nu ligger i contentBank.buildings/savedNPCs
+
+    async function loadCityBuildings(cityName) {
         try {
-            const response = await fetch(scriptURL + "?sheet=Byggnader");
+            const response = await fetch(scriptURL + "?sheet=Byggnader_" + encodeURIComponent(sheetSuffix(cityName)));
             const data = await response.json();
             const rows = (data || []).slice(1).filter(r => r && r.some(v => v !== "" && v !== null && v !== undefined));
             contentBank.buildings = rows.map(r => ({
@@ -702,8 +709,19 @@
                 djup: (r[8] !== undefined && r[8] !== "") ? parseFloat(r[8]) : null
             })).filter(b => b.stad && b.namn);
         } catch (e) {
-            console.error("Kunde inte ladda Byggnader", e);
+            console.error("Kunde inte ladda byggnader för " + cityName, e);
+            contentBank.buildings = [];
         }
+    }
+
+    // Ser till att RÄTT stads data ligger laddad innan något som behöver den körs.
+    // Anropas både när man öppnar en stadskarta OCH när man kör "Generera befolkning"
+    // (som kan startas direkt från platspopupen, utan att stadskartan öppnats först).
+    async function ensureCityDataLoaded(cityName) {
+        if (loadedCityName === cityName) return;
+        contentBank.buildingsLoaded = false;
+        await Promise.all([loadCityBuildings(cityName), loadCityNPCs(cityName)]);
+        loadedCityName = cityName;
         contentBank.buildingsLoaded = true;
     }
 
@@ -754,15 +772,21 @@
     async function saveBuildingsToCloud() {
         const BUILDING_HEADERS = ["Stad", "Byggnadsnamn", "Typ", "Yrke", "Ungefär antal invånare", "X", "Y", "Bredd", "Djup"];
         const output = [BUILDING_HEADERS, ...contentBank.buildings.map(b => [b.stad, b.namn, b.typ, b.yrke, b.antal, b.x, b.y, b.bredd || "", b.djup || ""])];
-        await fetch(scriptURL + "?sheet=Byggnader", { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
+        await fetch(scriptURL + "?sheet=Byggnader_" + encodeURIComponent(sheetSuffix(loadedCityName)), { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
     }
 
     async function openCityMap(cityName) {
-        if (!contentBank.loaded || !contentBank.buildingsLoaded) return alert("Innehållet laddas fortfarande - försök igen om en liten stund.");
-        const buildings = contentBank.buildings.filter(b => b.stad === cityName);
-        if (!buildings.length) return alert("Inga byggnader hittades för " + cityName + " än. Lägg till några i Byggnader-fliken, eller kör 'Generera befolkning' först.");
+        if (!contentBank.loaded) return alert("Innehållet laddas fortfarande - försök igen om en liten stund.");
 
         map.closePopup();
+        const statusEl = document.getElementById('cloud-status');
+        if (statusEl) statusEl.innerText = "📤 Laddar " + cityName + "...";
+        await ensureCityDataLoaded(cityName);
+        if (statusEl) statusEl.innerText = "";
+
+        const buildings = contentBank.buildings.filter(b => b.stad === cityName);
+        if (!buildings.length) return alert("Inga byggnader hittades för " + cityName + " än. Lägg till några i Byggnader_" + sheetSuffix(cityName) + "-fliken, eller kör 'Generera befolkning' först.");
+
         cityViewActive = true;
         currentCityName = cityName;
 
@@ -1025,7 +1049,6 @@
                 img1: row[12], img2: row[13], img3: row[14], dimg1: row[17], dimg2: row[18]
             }));
             renderMarkers();
-            populateNPCPlaceDropdown();
             document.getElementById('cloud-status').innerText = "✅ Synkad";
         } catch (e) { document.getElementById('cloud-status').innerText = "❌ Fel"; }
     }
@@ -1198,11 +1221,13 @@
     }
 
     function openNPCTab() {
+        if (!loadedCityName) return alert("Öppna en stads karta först (klicka '🏙️ Öppna stadskarta' på en plats) - invånare hör numera till en specifik stads egen flik.");
         switchTab('npc');
         setEditorOpen(true);
         document.getElementById('npc-edit-index').value = "-1";
         clearNPCForm();
-        populateNPCPlaceDropdown();
+        document.getElementById('npc-place').value = loadedCityName;
+        populateNPCBuildingDropdown(loadedCityName);
         document.getElementById('npc-name').focus();
     }
 
@@ -1221,16 +1246,6 @@
             document.getElementById('npc-age').value = generateAge(ras);
         }
     });
-
-    function populateNPCPlaceDropdown() {
-        const sel = document.getElementById('npc-place');
-        const current = sel.value;
-        const settlements = savedData.filter(m => ['gold', 'blue', 'green'].includes(m.type));
-        const sortedPlaces = [...settlements].sort((a, b) => a.name.localeCompare(b.name, 'sv'));
-        sel.innerHTML = '<option value="">– Ingen plats vald –</option>' + sortedPlaces.map(m => `<option value="${m.name}">${m.name}</option>`).join('');
-        sel.value = current;
-        populateNPCBuildingDropdown(sel.value);
-    }
 
     function populateNPCBuildingDropdown(placeName) {
         const sel = document.getElementById('npc-building');
@@ -1292,9 +1307,9 @@
                 n.str, n.dex, n.kon, n.int, n.vis, n.cha, n.ac, n.hp, n.place, n.building, n.relations, n.dmNotes, n.playerNotes];
     }
 
-    async function loadNPCsFromCloud() {
+    async function loadCityNPCs(cityName) {
         try {
-            const response = await fetch(scriptURL + "?sheet=Invanare");
+            const response = await fetch(scriptURL + "?sheet=Invanare_" + encodeURIComponent(sheetSuffix(cityName)));
             const data = await response.json();
             savedNPCs = (data || []).slice(1).filter(row => row && row[0]).map(row => ({
                 name: row[0]||"", gender: row[1]||"", race: row[2]||"", age: row[3]||"", job: row[4]||"",
@@ -1303,8 +1318,11 @@
                 vis: row[14]||"", cha: row[15]||"", ac: row[16]||"", hp: row[17]||"", place: row[18]||"",
                 building: row[19]||"", relations: row[20]||"", dmNotes: row[21]||"", playerNotes: row[22]||""
             }));
-            renderNPCList();
-        } catch (e) { console.error("Kunde inte ladda invånare", e); }
+        } catch (e) {
+            console.error("Kunde inte ladda invånare för " + cityName, e);
+            savedNPCs = [];
+        }
+        renderNPCList();
     }
 
     async function saveNPCToCloud() {
@@ -1342,7 +1360,7 @@
 
         document.getElementById('npc-save-status').innerText = "📤 Sparar...";
         const output = [NPC_HEADERS, ...savedNPCs.map(npcToRow)];
-        await fetch(scriptURL + "?sheet=Invanare", { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
+        await fetch(scriptURL + "?sheet=Invanare_" + encodeURIComponent(sheetSuffix(loadedCityName)), { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
 
         document.getElementById('npc-edit-index').value = "-1";
         clearNPCForm();
@@ -1358,7 +1376,7 @@
         savedNPCs.splice(idx, 1);
         document.getElementById('npc-save-status').innerText = "📤 Raderar...";
         const output = [NPC_HEADERS, ...savedNPCs.map(npcToRow)];
-        await fetch(scriptURL + "?sheet=Invanare", { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
+        await fetch(scriptURL + "?sheet=Invanare_" + encodeURIComponent(sheetSuffix(loadedCityName)), { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
 
         document.getElementById('npc-edit-index').value = "-1";
         clearNPCForm();
@@ -1370,7 +1388,6 @@
         const n = savedNPCs[i];
         switchTab('npc');
         setEditorOpen(true);
-        populateNPCPlaceDropdown();
         populateNPCDropdowns();
         document.getElementById('npc-name').value = n.name;
         document.getElementById('npc-gender').value = n.gender;
@@ -1587,7 +1604,7 @@
     var _populationModalCity = null;
 
     function generatePopulation(cityName) {
-        if (!contentBank.loaded || !contentBank.buildingsLoaded) return alert("Innehållet laddas fortfarande - försök igen om en liten stund.");
+        if (!contentBank.loaded) return alert("Innehållet laddas fortfarande - försök igen om en liten stund.");
         _populationModalCity = cityName;
 
         const city = savedData.find(m => m.name === cityName);
@@ -1630,6 +1647,10 @@
     }
 
     async function runPopulationGeneration(cityName, dominantRace, dominantPct, extraCount) {
+        document.getElementById('cloud-status').innerText = "📤 Laddar " + cityName + "...";
+        await ensureCityDataLoaded(cityName);
+        document.getElementById('cloud-status').innerText = "";
+
         const city = savedData.find(m => m.name === cityName);
         const cityPop = city ? (parseInt(city.pop) || 0) : 0;
         const raceNames = Object.keys(contentBank.racesInfo);
@@ -1783,12 +1804,12 @@
 
         document.getElementById('cloud-status').innerText = "📤 Sparar befolkning...";
         const output = [NPC_HEADERS, ...savedNPCs.map(npcToRow)];
-        await fetch(scriptURL + "?sheet=Invanare", { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
+        await fetch(scriptURL + "?sheet=Invanare_" + encodeURIComponent(sheetSuffix(cityName)), { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
 
         if (newBuildings.length) {
             const BUILDING_HEADERS = ["Stad", "Byggnadsnamn", "Typ", "Yrke", "Ungefär antal invånare", "X", "Y", "Bredd", "Djup"];
             const buildingOutput = [BUILDING_HEADERS, ...contentBank.buildings.map(b => [b.stad, b.namn, b.typ, b.yrke, b.antal, b.x != null ? b.x : "", b.y != null ? b.y : "", b.bredd || "", b.djup || ""])];
-            await fetch(scriptURL + "?sheet=Byggnader", { method: 'POST', mode: 'no-cors', body: JSON.stringify(buildingOutput) });
+            await fetch(scriptURL + "?sheet=Byggnader_" + encodeURIComponent(sheetSuffix(cityName)), { method: 'POST', mode: 'no-cors', body: JSON.stringify(buildingOutput) });
         }
 
         document.getElementById('cloud-status').innerText = "✅ Klart";
@@ -1995,10 +2016,10 @@
     }
 
     loadFromCloud();
-    loadNPCsFromCloud();
     loadSpelareFromCloud();
-    loadBuildingsFromCloud();
     loadContentBank();
+    // Byggnader/Invånare laddas numera PER STAD, först när du öppnar en
+    // stadskarta eller kör "Generera befolkning" (se ensureCityDataLoaded).
 </script>
 </body>
 </html>
