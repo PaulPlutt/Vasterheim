@@ -825,7 +825,7 @@
         currentCityName = cityName;
 
         map.removeLayer(worldImageLayer);
-        map.eachLayer(l => { if (l instanceof L.Marker) map.removeLayer(l); });
+        map.eachLayer(l => { if (l instanceof L.Marker || l instanceof L.Path) map.removeLayer(l); });
 
         const needsSave = ensureBuildingCoords(cityName);
         if (needsSave) await saveBuildingsToCloud();
@@ -860,7 +860,7 @@
         cityViewActive = false;
         currentCityName = null;
         if (cityBackgroundLayer) { map.removeLayer(cityBackgroundLayer); cityBackgroundLayer = null; }
-        map.eachLayer(l => { if (l instanceof L.Marker) map.removeLayer(l); });
+        map.eachLayer(l => { if (l instanceof L.Marker || l instanceof L.Path) map.removeLayer(l); });
         if (!map.hasLayer(worldImageLayer)) worldImageLayer.addTo(map);
         map.setMaxZoom(WORLD_MAX_ZOOM);
         map.fitBounds(worldBounds);
@@ -1131,7 +1131,7 @@
     }
 
     function renderMarkers() {
-        map.eachLayer(l => { if (l instanceof L.Marker) map.removeLayer(l); });
+        map.eachLayer(l => { if (l instanceof L.Marker || l instanceof L.Path) map.removeLayer(l); });
         savedData.forEach((m, i) => {
             if (activeFilter !== 'all' && m.type !== activeFilter) return;
             let urls = [formatImgUrl(m.img1, "Bilder"), formatImgUrl(m.img2, "Bilder"), formatImgUrl(m.img3, "Bilder")].filter(x => x);
