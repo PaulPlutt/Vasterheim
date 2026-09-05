@@ -695,6 +695,18 @@
 
     var loadedCityName = null; // vilken stads data som just nu ligger i contentBank.buildings/savedNPCs
 
+    // Tolkar en textkodad polygon ("x1,y1;x2,y2;x3,y3") till en punktlista Leaflet kan rita.
+    function parsePolygonString(s) {
+        if (!s) return null;
+        try {
+            const points = s.split(';').map(p => {
+                const [x, y] = p.split(',').map(Number);
+                return [y, x]; // Leaflet vill ha [y, x] (lat, lng)
+            });
+            return points.length >= 3 ? points : null;
+        } catch (e) { return null; }
+    }
+
     async function loadCityBuildings(cityName) {
         try {
             const response = await fetch(scriptURL + "?sheet=Byggnader_" + encodeURIComponent(sheetSuffix(cityName)));
@@ -706,7 +718,8 @@
                 x: (r[5] !== undefined && r[5] !== "") ? parseFloat(r[5]) : null,
                 y: (r[6] !== undefined && r[6] !== "") ? parseFloat(r[6]) : null,
                 bredd: (r[7] !== undefined && r[7] !== "") ? parseFloat(r[7]) : null,
-                djup: (r[8] !== undefined && r[8] !== "") ? parseFloat(r[8]) : null
+                djup: (r[8] !== undefined && r[8] !== "") ? parseFloat(r[8]) : null,
+                polygon: parsePolygonString(r[9])
             })).filter(b => b.stad && b.namn);
         } catch (e) {
             console.error("Kunde inte ladda byggnader för " + cityName, e);
@@ -769,9 +782,15 @@
         return changed;
     }
 
+    // Kodar en punktlista tillbaka till textformatet ("x1,y1;x2,y2;...") för att spara den.
+    function polygonToString(polygon) {
+        if (!polygon || polygon.length < 3) return "";
+        return polygon.map(p => `${p[1]},${p[0]}`).join(';'); // p är [y,x] -> spara som x,y
+    }
+
     async function saveBuildingsToCloud() {
-        const BUILDING_HEADERS = ["Stad", "Byggnadsnamn", "Typ", "Yrke", "Ungefär antal invånare", "X", "Y", "Bredd", "Djup"];
-        const output = [BUILDING_HEADERS, ...contentBank.buildings.map(b => [b.stad, b.namn, b.typ, b.yrke, b.antal, b.x, b.y, b.bredd || "", b.djup || ""])];
+        const BUILDING_HEADERS = ["Stad", "Byggnadsnamn", "Typ", "Yrke", "Ungefär antal invånare", "X", "Y", "Bredd", "Djup", "Polygon"];
+        const output = [BUILDING_HEADERS, ...contentBank.buildings.map(b => [b.stad, b.namn, b.typ, b.yrke, b.antal, b.x, b.y, b.bredd || "", b.djup || "", polygonToString(b.polygon)])];
         await fetch(scriptURL + "?sheet=Byggnader_" + encodeURIComponent(sheetSuffix(loadedCityName)), { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
     }
 
@@ -936,9 +955,18 @@
             }
             content += `</div>`;
 
-            L.rectangle(bounds, {
-                color: "#0b1d21", weight: 1, fillColor: farg, fillOpacity: 0.9
-            }).addTo(map).bindPopup(content, { maxWidth: 260 });
+            // NYTT: om byggnaden har en riktig polygonform (t.ex. importerad från ett
+            // externt kartverktyg) ritas den formen exakt, roterad precis som originalet -
+            // annars faller vi tillbaka på en rak rektangel utifrån Bredd/Djup som förut.
+            if (b.polygon && b.polygon.length >= 3) {
+                L.polygon(b.polygon, {
+                    color: "#0b1d21", weight: 1, fillColor: farg, fillOpacity: 0.9
+                }).addTo(map).bindPopup(content, { maxWidth: 260 });
+            } else {
+                L.rectangle(bounds, {
+                    color: "#0b1d21", weight: 1, fillColor: farg, fillOpacity: 0.9
+                }).addTo(map).bindPopup(content, { maxWidth: 260 });
+            }
         });
     }
 
@@ -1828,8 +1856,8 @@
         await fetch(scriptURL + "?sheet=Invanare_" + encodeURIComponent(sheetSuffix(cityName)), { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
 
         if (newBuildings.length) {
-            const BUILDING_HEADERS = ["Stad", "Byggnadsnamn", "Typ", "Yrke", "Ungefär antal invånare", "X", "Y", "Bredd", "Djup"];
-            const buildingOutput = [BUILDING_HEADERS, ...contentBank.buildings.map(b => [b.stad, b.namn, b.typ, b.yrke, b.antal, b.x != null ? b.x : "", b.y != null ? b.y : "", b.bredd || "", b.djup || ""])];
+            const BUILDING_HEADERS = ["Stad", "Byggnadsnamn", "Typ", "Yrke", "Ungefär antal invånare", "X", "Y", "Bredd", "Djup", "Polygon"];
+            const buildingOutput = [BUILDING_HEADERS, ...contentBank.buildings.map(b => [b.stad, b.namn, b.typ, b.yrke, b.antal, b.x != null ? b.x : "", b.y != null ? b.y : "", b.bredd || "", b.djup || "", polygonToString(b.polygon)])];
             await fetch(scriptURL + "?sheet=Byggnader_" + encodeURIComponent(sheetSuffix(cityName)), { method: 'POST', mode: 'no-cors', body: JSON.stringify(buildingOutput) });
         }
 
