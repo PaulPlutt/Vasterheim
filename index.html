@@ -563,7 +563,7 @@
         yrken: [], personalityPool: [], goalsPool: [], religions: [], econStatuses: [],
         statsSettings: { min: 3, max: 18, baseline: 10, variation: 3 },
         buildings: [], buildingTypes: [], familyJobChance: {}, relationTypes: [],
-        loaded: false
+        loaded: false, buildingsLoaded: false
     };
 
     const HYBRID_PARENTS = { "Halvalv": ["Alv", "Människa"], "Halvork": ["Ork", "Människa"] };
@@ -588,14 +588,17 @@
         if (contentStatus) contentStatus.innerText = "📚 Laddar innehåll...";
 
         try {
+            // Byggnader hämtas SEPARAT (se loadBuildingsFromCloud) - den kan bli stor
+            // (tusentals rader vid importerade städer) och ska inte kunna dra ner de
+            // andra, lätta referensflikarna med sig i samma anrop.
             const sheetNames = ["Fornamn","Efternamn","Raser","Yrken","Personlighetsdrag","Mal","Religioner",
-                "EkonomiskStatus","StatsInstallningar","GrundstatsPerRas","Byggnader","Byggnadstyper",
+                "EkonomiskStatus","StatsInstallningar","GrundstatsPerRas","Byggnadstyper",
                 "ByggnadstyperFamiljejobb","Relationstyper"];
             const sheets = await fetchMultipleSheets(sheetNames);
             const fornamn = sheets["Fornamn"], efternamn = sheets["Efternamn"], raser = sheets["Raser"], yrken = sheets["Yrken"],
                   personlighet = sheets["Personlighetsdrag"], mal = sheets["Mal"], religioner = sheets["Religioner"],
                   ekonomi = sheets["EkonomiskStatus"], statsInst = sheets["StatsInstallningar"], grundstats = sheets["GrundstatsPerRas"],
-                  byggnader = sheets["Byggnader"], byggnadstyper = sheets["Byggnadstyper"], familjejobb = sheets["ByggnadstyperFamiljejobb"],
+                  byggnadstyper = sheets["Byggnadstyper"], familjejobb = sheets["ByggnadstyperFamiljejobb"],
                   relationstyper = sheets["Relationstyper"];
 
             fornamn.forEach(row => {
@@ -650,7 +653,7 @@
                 };
             });
 
-            loadBuildingBank(byggnader, byggnadstyper, familjejobb, relationstyper);
+            loadBuildingTypeBank(byggnadstyper, familjejobb, relationstyper);
 
             contentBank.loaded = true;
             populateNPCDropdowns();
@@ -663,18 +666,8 @@
         }
     }
 
-    // ---- NYTT: Byggnader, Byggnadstyper, familjejobb-sannolikhet, relationstyper ----
-    function loadBuildingBank(byggnader, byggnadstyper, familjejobb, relationstyper) {
-        // Byggnader: Stad, Byggnadsnamn, Typ, Yrke, Ungefär antal invånare, X, Y
-        contentBank.buildings = byggnader.map(r => ({
-            stad: r[0] || "", namn: r[1] || "", typ: r[2] || "", yrke: r[3] || "",
-            antal: parseInt(r[4]) || 1,
-            x: (r[5] !== undefined && r[5] !== "") ? parseFloat(r[5]) : null,
-            y: (r[6] !== undefined && r[6] !== "") ? parseFloat(r[6]) : null,
-            bredd: (r[7] !== undefined && r[7] !== "") ? parseFloat(r[7]) : null,
-            djup: (r[8] !== undefined && r[8] !== "") ? parseFloat(r[8]) : null
-        })).filter(b => b.stad && b.namn);
-
+    // ---- NYTT: Byggnadstyper, familjejobb-sannolikhet, relationstyper (lätta referensflikar) ----
+    function loadBuildingTypeBank(byggnadstyper, familjejobb, relationstyper) {
         // Byggnadstyper: Typ, Vikt, Vanligt yrke, Minsta befolkning, Max normalt, Max storstad
         contentBank.buildingTypes = byggnadstyper.map(r => ({
             typ: r[0] || "", vikt: parseFloat(r[1]) || 1, yrke: r[2] || "",
@@ -690,6 +683,28 @@
 
         // Relationstyper: Relationstyp
         contentBank.relationTypes = relationstyper.map(r => r[0]).filter(Boolean);
+    }
+
+    // ---- NYTT: Byggnader hämtas för sig, separat från de lätta referensflikarna ovan,
+    // eftersom den här fliken kan bli stor (t.ex. importerade städer med tusentals rader)
+    // och inte ska riskera att dra ner/tajma ut de andra flikarnas gemensamma anrop.
+    async function loadBuildingsFromCloud() {
+        try {
+            const response = await fetch(scriptURL + "?sheet=Byggnader");
+            const data = await response.json();
+            const rows = (data || []).slice(1).filter(r => r && r.some(v => v !== "" && v !== null && v !== undefined));
+            contentBank.buildings = rows.map(r => ({
+                stad: r[0] || "", namn: r[1] || "", typ: r[2] || "", yrke: r[3] || "",
+                antal: parseInt(r[4]) || 1,
+                x: (r[5] !== undefined && r[5] !== "") ? parseFloat(r[5]) : null,
+                y: (r[6] !== undefined && r[6] !== "") ? parseFloat(r[6]) : null,
+                bredd: (r[7] !== undefined && r[7] !== "") ? parseFloat(r[7]) : null,
+                djup: (r[8] !== undefined && r[8] !== "") ? parseFloat(r[8]) : null
+            })).filter(b => b.stad && b.namn);
+        } catch (e) {
+            console.error("Kunde inte ladda Byggnader", e);
+        }
+        contentBank.buildingsLoaded = true;
     }
 
     // ============================================================
@@ -743,7 +758,7 @@
     }
 
     async function openCityMap(cityName) {
-        if (!contentBank.loaded) return alert("Innehållet laddas fortfarande - försök igen om en liten stund.");
+        if (!contentBank.loaded || !contentBank.buildingsLoaded) return alert("Innehållet laddas fortfarande - försök igen om en liten stund.");
         const buildings = contentBank.buildings.filter(b => b.stad === cityName);
         if (!buildings.length) return alert("Inga byggnader hittades för " + cityName + " än. Lägg till några i Byggnader-fliken, eller kör 'Generera befolkning' först.");
 
@@ -1572,7 +1587,7 @@
     var _populationModalCity = null;
 
     function generatePopulation(cityName) {
-        if (!contentBank.loaded) return alert("Innehållet laddas fortfarande - försök igen om en liten stund.");
+        if (!contentBank.loaded || !contentBank.buildingsLoaded) return alert("Innehållet laddas fortfarande - försök igen om en liten stund.");
         _populationModalCity = cityName;
 
         const city = savedData.find(m => m.name === cityName);
@@ -1982,6 +1997,7 @@
     loadFromCloud();
     loadNPCsFromCloud();
     loadSpelareFromCloud();
+    loadBuildingsFromCloud();
     loadContentBank();
 </script>
 </body>
