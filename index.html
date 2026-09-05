@@ -699,6 +699,21 @@
     // ============================================================
     var cityViewActive = false;
     var currentCityName = null;
+    var cityBackgroundLayer = null;
+
+    // Räknar ut hur stor kartytan faktiskt behöver vara för just den här staden,
+    // istället för att alltid anta en fast 1000x1000-yta. Städer med verkliga,
+    // stora koordinater (t.ex. importerade från externa verktyg) får då plats
+    // utan att vi tvingas klämma ihop deras riktiga meter-mått.
+    function computeCitySize(cityName) {
+        const buildings = contentBank.buildings.filter(b => b.stad === cityName);
+        let maxExtent = CITY_CANVAS_SIZE;
+        buildings.forEach(b => {
+            const bx = b.x || 0, by = b.y || 0;
+            maxExtent = Math.max(maxExtent, bx + 50, by + 50);
+        });
+        return maxExtent;
+    }
     var CITY_CANVAS_SIZE = 1000;
 
     // Färg per byggnadstyp - samma palett som stadsgeneratorn (p5.js), för konsekvens
@@ -742,9 +757,18 @@
         const needsSave = ensureBuildingCoords(cityName);
         if (needsSave) await saveBuildingsToCloud();
 
-        const cityBounds = [[0, 0], [CITY_CANVAS_SIZE, CITY_CANVAS_SIZE]];
+        const citySize = computeCitySize(cityName);
+        const cityBounds = [[0, 0], [citySize, citySize]];
         map.setMaxZoom(CITY_MAX_ZOOM);
         map.fitBounds(cityBounds);
+
+        // Valfri bakgrundsbild: letar efter en fil döpt efter staden (t.ex. "bergvik_karta.svg")
+        // i samma GitHub-mapp som allt annat. Finns ingen sådan fil visas bara den tomma,
+        // mörka ytan som förut - helt ofarligt om filen saknas.
+        if (cityBackgroundLayer) { map.removeLayer(cityBackgroundLayer); cityBackgroundLayer = null; }
+        const bgFilnamn = cityName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '') + '_karta.svg';
+        cityBackgroundLayer = L.imageOverlay(bgFilnamn, cityBounds, { opacity: 1 }).addTo(map);
+        cityBackgroundLayer.bringToBack();
 
         document.getElementById('back-to-world-btn').style.display = 'block';
         document.getElementById('grid-toggle-btn').style.display = 'block';
@@ -756,6 +780,7 @@
     function closeCityMap() {
         cityViewActive = false;
         currentCityName = null;
+        if (cityBackgroundLayer) { map.removeLayer(cityBackgroundLayer); cityBackgroundLayer = null; }
         map.eachLayer(l => { if (l instanceof L.Marker) map.removeLayer(l); });
         if (!map.hasLayer(worldImageLayer)) worldImageLayer.addTo(map);
         map.setMaxZoom(WORLD_MAX_ZOOM);
