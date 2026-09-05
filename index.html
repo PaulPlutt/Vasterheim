@@ -519,7 +519,7 @@
     const scriptURL = "https://script.google.com/macros/s/AKfycbz58adKsUWUQgv5FEJBxwIWlAvczTZ64HdybbQpbwQRGSL1x9EcZGcHtXusIwUkJcfD/exec";
     var WORLD_MAX_ZOOM = 2;
     var CITY_MAX_ZOOM = 7; // ger gott om marginal ner till 1-metersrutor
-    var map = L.map('map', { crs: L.CRS.Simple, minZoom: -2, maxZoom: WORLD_MAX_ZOOM, attributionControl: false });
+    var map = L.map('map', { crs: L.CRS.Simple, minZoom: -2, maxZoom: WORLD_MAX_ZOOM, attributionControl: false, preferCanvas: true });
     var worldBounds = [[0, 0], [2887, 3840]];
     var worldImageLayer = L.imageOverlay('VASTERHEIM.webp', worldBounds).addTo(map);
     map.fitBounds(worldBounds);
