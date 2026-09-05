@@ -775,6 +775,21 @@
         await fetch(scriptURL + "?sheet=Byggnader_" + encodeURIComponent(sheetSuffix(loadedCityName)), { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
     }
 
+    // Läser av en SVG-fils EGNA verkliga mått direkt ur dess viewBox, istället för
+    // att gissa storleken utifrån var byggnaderna råkar ligga - annars kan bilden bli
+    // felskalad och hamna fel mot byggnaderna, om bilden visar mer yta (skog, mark)
+    // än vad de faktiska husen upptar.
+    async function getSvgViewBoxSize(url) {
+        try {
+            const res = await fetch(url);
+            if (!res.ok) return null;
+            const text = await res.text();
+            const m = text.match(/viewBox=["']\s*[-\d.]+\s+[-\d.]+\s+([\d.]+)\s+([\d.]+)\s*["']/);
+            if (!m) return null;
+            return Math.max(parseFloat(m[1]), parseFloat(m[2]));
+        } catch (e) { return null; }
+    }
+
     async function openCityMap(cityName) {
         if (!contentBank.loaded) return alert("Innehållet laddas fortfarande - försök igen om en liten stund.");
 
@@ -796,18 +811,24 @@
         const needsSave = ensureBuildingCoords(cityName);
         if (needsSave) await saveBuildingsToCloud();
 
-        const citySize = computeCitySize(cityName);
-        const cityBounds = [[0, 0], [citySize, citySize]];
-        map.setMaxZoom(CITY_MAX_ZOOM);
-        map.fitBounds(cityBounds);
-
         // Valfri bakgrundsbild: letar efter en fil döpt efter staden (t.ex. "bergvik_karta.svg")
         // i samma GitHub-mapp som allt annat. Finns ingen sådan fil visas bara den tomma,
         // mörka ytan som förut - helt ofarligt om filen saknas.
         if (cityBackgroundLayer) { map.removeLayer(cityBackgroundLayer); cityBackgroundLayer = null; }
         const bgFilnamn = cityName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '') + '_karta.svg';
-        cityBackgroundLayer = L.imageOverlay(bgFilnamn, cityBounds, { opacity: 1 }).addTo(map);
-        cityBackgroundLayer.bringToBack();
+        const svgSize = await getSvgViewBoxSize(bgFilnamn);
+
+        const citySize = computeCitySize(cityName);
+        const visningsStorlek = svgSize ? Math.max(svgSize, citySize) : citySize;
+        const cityBounds = [[0, 0], [visningsStorlek, visningsStorlek]];
+        map.setMaxZoom(CITY_MAX_ZOOM);
+        map.fitBounds(cityBounds);
+
+        if (svgSize) {
+            const bgBounds = [[0, 0], [svgSize, svgSize]];
+            cityBackgroundLayer = L.imageOverlay(bgFilnamn, bgBounds, { opacity: 1 }).addTo(map);
+            cityBackgroundLayer.bringToBack();
+        }
 
         document.getElementById('back-to-world-btn').style.display = 'block';
         document.getElementById('grid-toggle-btn').style.display = 'block';
