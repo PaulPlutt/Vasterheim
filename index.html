@@ -730,12 +730,27 @@
     // Ser till att RÄTT stads data ligger laddad innan något som behöver den körs.
     // Anropas både när man öppnar en stadskarta OCH när man kör "Generera befolkning"
     // (som kan startas direkt från platspopupen, utan att stadskartan öppnats först).
-    async function ensureCityDataLoaded(cityName) {
+    async function ensureCityDataLoaded(cityName, vantaInPaNPC) {
         if (loadedCityName === cityName) return;
         contentBank.buildingsLoaded = false;
-        await Promise.all([loadCityBuildings(cityName), loadCityNPCs(cityName)]);
+        // Byggnader är oftast betydligt snabbare att hämta än invånarlistan. Vid ren
+        // visning (öppna stadskarta) väntar vi bara in husen och låter invånarna droppa
+        // in strax efter, utan att blockera. Men vid "Generera befolkning" MÅSTE vi ha
+        // den kompletta, riktiga invånarlistan laddad innan vi lägger till fler och
+        // sparar - annars riskerar vi att skriva över befintliga invånare av misstag.
+        if (vantaInPaNPC) {
+            await Promise.all([loadCityBuildings(cityName), loadCityNPCs(cityName)]);
+            loadedCityName = cityName;
+            contentBank.buildingsLoaded = true;
+            return;
+        }
+        await loadCityBuildings(cityName);
         loadedCityName = cityName;
         contentBank.buildingsLoaded = true;
+
+        loadCityNPCs(cityName).then(() => {
+            if (currentCityName === cityName) renderCityMarkers();
+        });
     }
 
     // ============================================================
@@ -928,6 +943,10 @@
     map.on('zoomend moveend resize', drawGrid);
 
     function renderCityMarkers() {
+        // Rensa eventuella tidigare ritade byggnader först - annars skulle ett förnyat
+        // anrop (t.ex. när invånarna blir klara efter husen) rita allt dubbelt.
+        map.eachLayer(l => { if (l instanceof L.Path) map.removeLayer(l); });
+
         const buildings = contentBank.buildings.filter(b => b.stad === currentCityName);
         buildings.forEach(b => {
             const residents = savedNPCs.filter(n => n.place === currentCityName && n.building === b.namn);
@@ -1697,7 +1716,7 @@
 
     async function runPopulationGeneration(cityName, dominantRace, dominantPct, extraCount) {
         document.getElementById('cloud-status').innerText = "📤 Laddar " + cityName + "...";
-        await ensureCityDataLoaded(cityName);
+        await ensureCityDataLoaded(cityName, true);
         document.getElementById('cloud-status').innerText = "";
 
         const city = savedData.find(m => m.name === cityName);
