@@ -151,7 +151,7 @@
 <div id="content-row">
     <div id="map"></div>
     <div id="grid-label" style="display:none; position:absolute; bottom:10px; left:15px; z-index:1002; background:rgba(11,29,33,0.85); color:#8eb0b7; padding:4px 10px; border-radius:4px; font-size:11px; font-weight:bold;"></div>
-    <div id="building-legend" style="display:none; position:absolute; bottom:10px; right:15px; z-index:1002; background:rgba(11,29,33,0.9); border:1px solid #2a4d53; border-radius:6px; padding:8px 12px; font-size:11px;"></div>
+    <div id="building-legend" style="display:none; position:absolute; bottom:10px; right:15px; z-index:1002; background:rgba(11,29,33,0.9); border:1px solid #2a4d53; border-radius:6px; padding:10px 14px; font-size:14px;"></div>
 
     <button id="toggle-editor-btn" class="dm-only-btn" onclick="toggleEditorPanel()">◀ REDIGERA</button>
     <button id="back-to-world-btn" style="display:none; position:absolute; top:15px; left:15px; z-index:1002; background:#2a4d53; color:#8eb0b7; border:2px solid #447a82; padding:10px 12px; cursor:pointer; font-size:13px; font-weight:bold; border-radius:5px;" onclick="closeCityMap()">⬅ Till världskartan</button>
@@ -789,8 +789,8 @@
     function renderBuildingLegend() {
         const el = document.getElementById('building-legend');
         el.innerHTML = Object.entries(TYP_FARG).map(([typ, farg]) =>
-            `<div style="display:flex; align-items:center; gap:6px; margin:2px 0;">
-                <span style="width:12px; height:12px; background:${farg}; border:1px solid #0b1d21; display:inline-block; border-radius:2px;"></span>
+            `<div style="display:flex; align-items:center; gap:8px; margin:4px 0;">
+                <span style="width:15px; height:15px; background:${farg}; border:1px solid #0b1d21; display:inline-block; border-radius:2px;"></span>
                 <span style="color:#c9c2a8;">${typ}</span>
             </div>`
         ).join('');
