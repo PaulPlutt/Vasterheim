@@ -1837,6 +1837,13 @@
             });
         }
 
+        // ---- NYTT: garantera en ledare-byggnad (Borg/Palats) med en namngiven ledare ----
+        // Körs bara om staden inte redan har en - så upprepad generering inte skapar fler palats.
+        const harRedanPalats = existingBuildings.some(b => b.typ === "Borg/Palats") || newBuildings.some(b => b.typ === "Borg/Palats");
+        if (!harRedanPalats) {
+            newBuildings.push({ stad: cityName, namn: `${cityName}s Borg`, typ: "Borg/Palats", yrke: "Ledare", antal: 1 });
+        }
+
         if (remaining > 0) {
             const isStor = cityPop >= 10000;
             const usedCounts = {};
@@ -1909,7 +1916,13 @@
                     goal: contentBank.goalsPool.length ? pick(contentBank.goalsPool) : "",
                     str: stats.STR, dex: stats.DEX, kon: stats.KON, int: stats.INT, vis: stats.VIS, cha: stats.CHA,
                     ac: derived.ac, hp: derived.hp,
-                    place: cityName, building: b.namn, relations: "", dmNotes: "", playerNotes: "",
+                    place: cityName, building: b.namn,
+                    // Ledaren ska ALLTID vara både bosatt och verksam i sin borg/palats - satt
+                    // explicit här så det aldrig kan glida iväg oavsett hur resten av
+                    // generatorn ändras i framtiden (t.ex. om vi senare lägger till allmän
+                    // arbetsplats-tilldelning för alla genererade invånare).
+                    workplace: (b.typ === "Borg/Palats") ? b.namn : "",
+                    relations: "", dmNotes: "", playerNotes: "",
                     _isChild: isChild
                 });
                 householdMembers.push(newNPCs.length - 1);
@@ -1953,6 +1966,17 @@
         newNPCs.forEach(n => delete n._isChild);
         savedNPCs = savedNPCs.concat(newNPCs);
 
+        // NYTT: hitta den nygenererade ledaren (om en palats-byggnad skapades ovan) och
+        // uppdatera platsens Ledare-fält på världskartan automatiskt.
+        if (!harRedanPalats) {
+            const ledarNPC = newNPCs.find(n => n.job === "Ledare" && n.building === `${cityName}s Borg`);
+            if (ledarNPC && city) {
+                city.pol = ledarNPC.name;
+                await saveToCloud();
+                renderMarkers();
+            }
+        }
+
         document.getElementById('cloud-status').innerText = "📤 Sparar befolkning...";
         const output = [NPC_HEADERS, ...savedNPCs.map(npcToRow)];
         await fetch(scriptURL + "?sheet=Invanare_" + encodeURIComponent(sheetSuffix(cityName)), { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
@@ -1966,7 +1990,9 @@
         document.getElementById('cloud-status').innerText = "✅ Klart";
 
         renderNPCList();
-        alert(`Klart! ${newNPCs.length} invånare skapade i ${cityName} (${newBuildings.length} nya byggnader tillagda).`);
+        const ledarNPC = !harRedanPalats ? newNPCs.find(n => n.job === "Ledare" && n.building === `${cityName}s Borg`) : null;
+        const ledareText = ledarNPC ? `\n\n${ledarNPC.name} har utsetts till stadens ledare, boende i ${cityName}s Borg.` : "";
+        alert(`Klart! ${newNPCs.length} invånare skapade i ${cityName} (${newBuildings.length} nya byggnader tillagda).${ledareText}`);
     }
 
     function appendRelation(npc, text) {
