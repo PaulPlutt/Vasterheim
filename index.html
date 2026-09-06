@@ -151,10 +151,12 @@
 <div id="content-row">
     <div id="map"></div>
     <div id="grid-label" style="display:none; position:absolute; bottom:10px; left:15px; z-index:1002; background:rgba(11,29,33,0.85); color:#8eb0b7; padding:4px 10px; border-radius:4px; font-size:11px; font-weight:bold;"></div>
+    <div id="building-legend" style="display:none; position:absolute; bottom:10px; right:15px; z-index:1002; background:rgba(11,29,33,0.9); border:1px solid #2a4d53; border-radius:6px; padding:8px 12px; font-size:11px;"></div>
 
     <button id="toggle-editor-btn" class="dm-only-btn" onclick="toggleEditorPanel()">◀ REDIGERA</button>
     <button id="back-to-world-btn" style="display:none; position:absolute; top:15px; left:15px; z-index:1002; background:#2a4d53; color:#8eb0b7; border:2px solid #447a82; padding:10px 12px; cursor:pointer; font-size:13px; font-weight:bold; border-radius:5px;" onclick="closeCityMap()">⬅ Till världskartan</button>
     <button id="grid-toggle-btn" style="display:none; position:absolute; top:15px; left:170px; z-index:1002; background:#2a4d53; color:#8eb0b7; border:2px solid #447a82; padding:10px 12px; cursor:pointer; font-size:13px; font-weight:bold; border-radius:5px;" onclick="toggleGrid()">🔲 Rutnät</button>
+    <button id="legend-toggle-btn" style="display:none; position:absolute; top:15px; left:270px; z-index:1002; background:#2a4d53; color:#8eb0b7; border:2px solid #447a82; padding:10px 12px; cursor:pointer; font-size:13px; font-weight:bold; border-radius:5px;" onclick="toggleLegend()">🎨 Legend</button>
 
     <div id="editor-panel" class="editor-hidden">
         <div class="panel-tabs">
@@ -784,6 +786,16 @@
     };
     function fargForTyp(typ) { return TYP_FARG[typ] || "#f1c40f"; }
 
+    function renderBuildingLegend() {
+        const el = document.getElementById('building-legend');
+        el.innerHTML = Object.entries(TYP_FARG).map(([typ, farg]) =>
+            `<div style="display:flex; align-items:center; gap:6px; margin:2px 0;">
+                <span style="width:12px; height:12px; background:${farg}; border:1px solid #0b1d21; display:inline-block; border-radius:2px;"></span>
+                <span style="color:#c9c2a8;">${typ}</span>
+            </div>`
+        ).join('');
+    }
+
     function ensureBuildingCoords(cityName) {
         let changed = false;
         contentBank.buildings.filter(b => b.stad === cityName).forEach(b => {
@@ -871,6 +883,9 @@
         document.getElementById('back-to-world-btn').style.display = 'block';
         document.getElementById('grid-toggle-btn').style.display = 'block';
         document.getElementById('grid-label').style.display = gridEnabled ? 'block' : 'none';
+        renderBuildingLegend();
+        document.getElementById('legend-toggle-btn').style.display = 'block';
+        document.getElementById('building-legend').style.display = legendEnabled ? 'block' : 'none';
         renderCityMarkers();
         drawGrid();
     }
@@ -887,6 +902,8 @@
         document.getElementById('back-to-world-btn').style.display = 'none';
         document.getElementById('grid-toggle-btn').style.display = 'none';
         document.getElementById('grid-label').style.display = 'none';
+        document.getElementById('legend-toggle-btn').style.display = 'none';
+        document.getElementById('building-legend').style.display = 'none';
         renderMarkers();
         drawGrid(); // rensar rutnätet
     }
@@ -902,6 +919,12 @@
         gridEnabled = !gridEnabled;
         document.getElementById('grid-label').style.display = (gridEnabled && cityViewActive) ? 'block' : 'none';
         drawGrid();
+    }
+
+    var legendEnabled = true;
+    function toggleLegend() {
+        legendEnabled = !legendEnabled;
+        document.getElementById('building-legend').style.display = (legendEnabled && cityViewActive) ? 'block' : 'none';
     }
 
     // NYTT: rutnätet ritas nu som RIKTIGA Leaflet-linjer (L.polyline), exakt samma
