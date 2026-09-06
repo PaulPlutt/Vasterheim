@@ -2173,15 +2173,25 @@
     const ARBETSDAG_SLUT = 15;  // klockan 15:00
 
     // Väder: slumpas viktat per årstid - t.ex. mer regn på hösten, snö bara vintertid.
-    var worldWeather = { sasong: "Sommar", vader: "Sol" };
+    var worldWeather = { sasong: "Sommar", vader: "Sol", vararTillDag: null };
 
-    const VADER_IKON = { "Sol": "☀️", "Molnigt": "☁️", "Regn": "🌧️", "Åska": "⛈️", "Dimma": "🌫️", "Snö": "❄️", "Blåsigt": "🌬️" };
-    const VADER_VIKTER = {
-        "Vår":     { "Sol": 30, "Molnigt": 25, "Regn": 28, "Åska": 6,  "Dimma": 8,  "Blåsigt": 10, "Snö": 3 },
-        "Sommar":  { "Sol": 45, "Molnigt": 20, "Regn": 15, "Åska": 12, "Dimma": 3,  "Blåsigt": 5,  "Snö": 0 },
-        "Höst":    { "Sol": 15, "Molnigt": 28, "Regn": 32, "Åska": 6,  "Dimma": 12, "Blåsigt": 12, "Snö": 3 },
-        "Vinter":  { "Sol": 15, "Molnigt": 22, "Regn": 3,  "Åska": 0,  "Dimma": 10, "Blåsigt": 10, "Snö": 40 }
+    const VADER_IKON = {
+        "Sol": "☀️", "Halvklart": "🌤️", "Molnigt": "☁️", "Regn": "🌧️", "Skyfall": "☔",
+        "Åska": "⛈️", "Hagel": "🧊", "Dimma": "🌫️", "Frost": "🥶", "Snö": "❄️",
+        "Snöstorm": "🌨️", "Blåsigt": "🌬️", "Hetta": "🥵", "Norrsken": "🌌", "Storm": "🌪️"
     };
+    const VADER_VIKTER = {
+        "Vår":    { "Sol": 20, "Halvklart": 20, "Molnigt": 20, "Regn": 20, "Skyfall": 5,  "Åska": 5,  "Hagel": 4, "Dimma": 6,  "Frost": 4,  "Snö": 2,  "Snöstorm": 0, "Blåsigt": 10, "Hetta": 0, "Norrsken": 1, "Storm": 1 },
+        "Sommar": { "Sol": 35, "Halvklart": 15, "Molnigt": 12, "Regn": 10, "Skyfall": 4,  "Åska": 10, "Hagel": 2, "Dimma": 2,  "Frost": 0,  "Snö": 0,  "Snöstorm": 0, "Blåsigt": 4,  "Hetta": 6, "Norrsken": 0, "Storm": 0 },
+        "Höst":   { "Sol": 10, "Halvklart": 12, "Molnigt": 22, "Regn": 25, "Skyfall": 6,  "Åska": 4,  "Hagel": 3, "Dimma": 10, "Frost": 5,  "Snö": 2,  "Snöstorm": 0, "Blåsigt": 9,  "Hetta": 0, "Norrsken": 1, "Storm": 3 },
+        "Vinter": { "Sol": 10, "Halvklart": 12, "Molnigt": 15, "Regn": 2,  "Skyfall": 0,  "Åska": 0,  "Hagel": 1, "Dimma": 8,  "Frost": 12, "Snö": 25, "Snöstorm": 8, "Blåsigt": 7,  "Hetta": 0, "Norrsken": 4, "Storm": 1 }
+    };
+
+    // Vissa allvarliga vädertyper kan hålla i sig flera dygn i rad istället för att
+    // slumpas om varje dygn - typ en storm på hösten eller en snöstorm på vintern.
+    const FLERDAGARS_VADER = ["Storm", "Snöstorm"];
+    const FLERDAGARS_CHANS = 0.35; // 35% chans att en sådan händelse blir flerdagars
+    const FLERDAGARS_MIN_DAGAR = 2, FLERDAGARS_MAX_DAGAR = 4;
 
     function slumpaVader() {
         const vikter = VADER_VIKTER[worldWeather.sasong] || VADER_VIKTER["Sommar"];
@@ -2194,11 +2204,27 @@
         return "Sol";
     }
 
+    // Slumpar nytt väder för dagen, och avgör om det blir en flerdagarshändelse.
+    function rullaNyttDagsVader() {
+        const nyttVader = slumpaVader();
+        worldWeather.vader = nyttVader;
+        if (FLERDAGARS_VADER.includes(nyttVader) && Math.random() < FLERDAGARS_CHANS) {
+            const antalDagar = FLERDAGARS_MIN_DAGAR + Math.floor(Math.random() * (FLERDAGARS_MAX_DAGAR - FLERDAGARS_MIN_DAGAR + 1));
+            worldWeather.vararTillDag = worldClock.dag + antalDagar - 1;
+        } else {
+            worldWeather.vararTillDag = null;
+        }
+    }
+
     function updateWorldClockDisplay() {
         const t = String(worldClock.timme).padStart(2, '0');
         const ikon = VADER_IKON[worldWeather.vader] || "☀️";
         document.getElementById('world-clock-display').innerText = `Dag ${worldClock.dag}, ${t}:00`;
-        document.getElementById('world-weather-display').innerText = `${ikon} ${worldWeather.vader}`;
+        let vaderText = `${ikon} ${worldWeather.vader}`;
+        if (worldWeather.vararTillDag && worldWeather.vararTillDag >= worldClock.dag) {
+            vaderText += ` (t.o.m. dag ${worldWeather.vararTillDag})`;
+        }
+        document.getElementById('world-weather-display').innerText = vaderText;
         const sasongSel = document.getElementById('world-season-select');
         if (sasongSel && sasongSel.value !== worldWeather.sasong) sasongSel.value = worldWeather.sasong;
     }
@@ -2213,13 +2239,15 @@
                 worldClock.timme = parseInt(rad[1]) || 8;
                 worldWeather.sasong = rad[2] || "Sommar";
                 worldWeather.vader = rad[3] || "Sol";
+                worldWeather.vararTillDag = (rad[4] !== undefined && rad[4] !== "") ? parseInt(rad[4]) : null;
             }
         } catch (e) { console.error("Kunde inte ladda världsklockan", e); }
         updateWorldClockDisplay();
     }
 
     async function saveWorldClockToCloud() {
-        const output = [["Dag", "Timme", "Sasong", "Vader"], [worldClock.dag, worldClock.timme, worldWeather.sasong, worldWeather.vader]];
+        const output = [["Dag", "Timme", "Sasong", "Vader", "VararTillDag"],
+                         [worldClock.dag, worldClock.timme, worldWeather.sasong, worldWeather.vader, worldWeather.vararTillDag || ""]];
         await fetch(scriptURL + "?sheet=Varldsklocka", { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
     }
 
@@ -2228,9 +2256,12 @@
         let totalTimmar = worldClock.dag * 24 + worldClock.timme + timmar;
         worldClock.dag = Math.floor(totalTimmar / 24);
         worldClock.timme = totalTimmar % 24;
-        // Nytt väder slumpas fram varje gång ett nytt dygn passeras - inte varje timme,
-        // ungefär som att vädret oftast håller sig under en dag i taget.
-        if (worldClock.dag !== dagFore) worldWeather.vader = slumpaVader();
+        // Nytt väder slumpas bara fram om vi INTE fortfarande är kvar i en pågående
+        // flerdagarshändelse (t.ex. en storm som varar till och med dag X).
+        if (worldClock.dag !== dagFore) {
+            const pagarFlerdagars = worldWeather.vararTillDag && worldClock.dag <= worldWeather.vararTillDag;
+            if (!pagarFlerdagars) rullaNyttDagsVader();
+        }
         updateWorldClockDisplay();
         saveWorldClockToCloud();
         if (cityViewActive) renderCityMarkers(); // uppdatera vem som syns var
@@ -2238,13 +2269,13 @@
 
     function setWorldSeason(sasong) {
         worldWeather.sasong = sasong;
-        worldWeather.vader = slumpaVader(); // slumpa direkt om utifrån de nya förutsättningarna
+        rullaNyttDagsVader(); // slumpa direkt om utifrån de nya förutsättningarna
         updateWorldClockDisplay();
         saveWorldClockToCloud();
     }
 
     function rerollWorldWeather() {
-        worldWeather.vader = slumpaVader();
+        rullaNyttDagsVader();
         updateWorldClockDisplay();
         saveWorldClockToCloud();
     }
