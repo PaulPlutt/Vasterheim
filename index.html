@@ -150,7 +150,6 @@
 
 <div id="content-row">
     <div id="map"></div>
-    <canvas id="grid-canvas" style="position:absolute; top:0; left:0; pointer-events:none; z-index:900;"></canvas>
     <div id="grid-label" style="display:none; position:absolute; bottom:10px; left:15px; z-index:1002; background:rgba(11,29,33,0.85); color:#8eb0b7; padding:4px 10px; border-radius:4px; font-size:11px; font-weight:bold;"></div>
 
     <button id="toggle-editor-btn" class="dm-only-btn" onclick="toggleEditorPanel()">◀ REDIGERA</button>
@@ -905,13 +904,15 @@
         drawGrid();
     }
 
+    // NYTT: rutnätet ritas nu som RIKTIGA Leaflet-linjer (L.polyline), exakt samma
+    // mekanism som husen redan använder. De flyttas och skalas garanterat i perfekt takt
+    // med allt annat under drag/zoom, eftersom det är Leaflets egen inbyggda rendering -
+    // ingen egen positioneringslogik som kan halka efter behövs alls.
+    let gridLines = [];
+
     function drawGrid() {
-        const canvas = document.getElementById('grid-canvas');
-        const ctx = canvas.getContext('2d');
-        const size = map.getSize();
-        canvas.width = size.x;
-        canvas.height = size.y;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        gridLines.forEach(l => map.removeLayer(l));
+        gridLines = [];
 
         if (!cityViewActive || !gridEnabled) return;
 
@@ -925,22 +926,24 @@
             if (steg * pixlarPerMeter >= 45) { spacing = steg; break; }
         }
 
+        // Rita ett buffrat område - en marginal utanför synfältet - så att panorering en
+        // bit i sidled inte omedelbart visar tom kant innan nästa moveend hinner rita om.
         const bounds = map.getBounds();
-        const minX = Math.floor(bounds.getWest() / spacing) * spacing;
-        const maxX = Math.ceil(bounds.getEast() / spacing) * spacing;
-        const minY = Math.floor(bounds.getSouth() / spacing) * spacing;
-        const maxY = Math.ceil(bounds.getNorth() / spacing) * spacing;
+        const marginal = 1.0; // en extra synfältsbredd/höjd i varje riktning
+        const bredd = bounds.getEast() - bounds.getWest();
+        const hojd = bounds.getNorth() - bounds.getSouth();
+        const minX = Math.floor((bounds.getWest() - bredd * marginal) / spacing) * spacing;
+        const maxX = Math.ceil((bounds.getEast() + bredd * marginal) / spacing) * spacing;
+        const minY = Math.floor((bounds.getSouth() - hojd * marginal) / spacing) * spacing;
+        const maxY = Math.ceil((bounds.getNorth() + hojd * marginal) / spacing) * spacing;
 
-        ctx.strokeStyle = 'rgba(255,255,255,0.28)';
-        ctx.lineWidth = 1;
+        const stil = { color: '#ffffff', weight: 1, opacity: 0.28, interactive: false };
 
         for (let x = minX; x <= maxX; x += spacing) {
-            const pt = map.latLngToContainerPoint([0, x]);
-            ctx.beginPath(); ctx.moveTo(pt.x + 0.5, 0); ctx.lineTo(pt.x + 0.5, canvas.height); ctx.stroke();
+            gridLines.push(L.polyline([[minY, x], [maxY, x]], stil).addTo(map));
         }
         for (let y = minY; y <= maxY; y += spacing) {
-            const pt = map.latLngToContainerPoint([y, 0]);
-            ctx.beginPath(); ctx.moveTo(0, pt.y + 0.5); ctx.lineTo(canvas.width, pt.y + 0.5); ctx.stroke();
+            gridLines.push(L.polyline([[y, minX], [y, maxX]], stil).addTo(map));
         }
 
         document.getElementById('grid-label').innerText = "Rutnät: " + spacing + " m";
@@ -948,10 +951,15 @@
 
     map.on('zoomend moveend resize', drawGrid);
 
+    let buildingLayers = [];
+
     function renderCityMarkers() {
-        // Rensa eventuella tidigare ritade byggnader först - annars skulle ett förnyat
-        // anrop (t.ex. när invånarna blir klara efter husen) rita allt dubbelt.
-        map.eachLayer(l => { if (l instanceof L.Path) map.removeLayer(l); });
+        // Rensa bara VÅRA EGNA sparade byggnadslager - inte en bred sökning efter allt av
+        // typen L.Path, eftersom rutnätets linjer också är L.Path-objekt och annars skulle
+        // raderas av misstag varje gång den här funktionen körs igen (t.ex. när invånarna
+        // blir klara efter husen).
+        buildingLayers.forEach(l => map.removeLayer(l));
+        buildingLayers = [];
 
         const buildings = contentBank.buildings.filter(b => b.stad === currentCityName);
         buildings.forEach(b => {
@@ -983,15 +991,17 @@
             // NYTT: om byggnaden har en riktig polygonform (t.ex. importerad från ett
             // externt kartverktyg) ritas den formen exakt, roterad precis som originalet -
             // annars faller vi tillbaka på en rak rektangel utifrån Bredd/Djup som förut.
+            let layer;
             if (b.polygon && b.polygon.length >= 3) {
-                L.polygon(b.polygon, {
+                layer = L.polygon(b.polygon, {
                     color: "#0b1d21", weight: 1, fillColor: farg, fillOpacity: 0.9
                 }).addTo(map).bindPopup(content, { maxWidth: 260 });
             } else {
-                L.rectangle(bounds, {
+                layer = L.rectangle(bounds, {
                     color: "#0b1d21", weight: 1, fillColor: farg, fillOpacity: 0.9
                 }).addTo(map).bindPopup(content, { maxWidth: 260 });
             }
+            buildingLayers.push(layer);
         });
     }
 
