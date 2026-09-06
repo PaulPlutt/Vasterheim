@@ -798,11 +798,15 @@
 
     // Färg per byggnadstyp - samma palett som stadsgeneratorn (p5.js), för konsekvens
     const TYP_FARG = {
-        "Bostad": "#8b5a2b", "Handel/Butik": "#daa520", "Taverna/Värdshus": "#b22222",
+        "Bostad": "#8b5a2b", "Handel/Butik": "#daa520", "Taverna": "#b22222", "Värdshus": "#cd853f",
         "Hantverk": "#696969", "Religiös": "#ff8c00", "Vakt/Säkerhet": "#191970",
-        "Stadshus/Rådhus": "#464678", "Övrigt": "#556b2f"
+        "Stadshus": "#464678", "Borg/Palats": "#6a1b9a", "Skola": "#4a90a4", "Övrigt": "#556b2f"
     };
-    function fargForTyp(typ) { return TYP_FARG[typ] || "#f1c40f"; }
+    function fargForTyp(typ) {
+        if (typ === "Taverna/Värdshus") return TYP_FARG["Taverna"]; // bakåtkompatibilitet med äldre data
+        if (typ === "Stadshus/Rådhus") return TYP_FARG["Stadshus"];
+        return TYP_FARG[typ] || "#f1c40f";
+    }
 
     function renderBuildingLegend() {
         const el = document.getElementById('building-legend');
