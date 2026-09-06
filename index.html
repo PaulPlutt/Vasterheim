@@ -145,6 +145,15 @@
             <button class="dm-only-btn" style="padding:4px 8px; font-size:11px;" onclick="advanceWorldClock(1)">+1h</button>
             <button class="dm-only-btn" style="padding:4px 8px; font-size:11px;" onclick="advanceWorldClock(6)">+6h</button>
             <button class="dm-only-btn" style="padding:4px 8px; font-size:11px;" onclick="advanceWorldClock(24)">+1 dag</button>
+            <span style="width:1px; height:16px; background:#2a4d53; display:inline-block;"></span>
+            <span id="world-weather-display" style="font-size:13px; color:#c9c2a8;">☀️ Sol</span>
+            <select id="world-season-select" class="dm-only-btn" style="padding:4px 6px; font-size:11px;" onchange="setWorldSeason(this.value)">
+                <option value="Vår">Vår</option>
+                <option value="Sommar">Sommar</option>
+                <option value="Höst">Höst</option>
+                <option value="Vinter">Vinter</option>
+            </select>
+            <button class="dm-only-btn" style="padding:4px 8px; font-size:11px;" onclick="rerollWorldWeather()" title="Slumpa nytt väder utan att byta dag">🎲</button>
         </div>
         <button id="add-place-btn" class="dm-only-btn" onclick="togglePlacingMode()">+ Lägg till plats</button>
         <button id="add-npc-btn" class="dm-only-btn" onclick="openNPCTab()">+ Lägg till invånare</button>
@@ -2163,9 +2172,35 @@
     const ARBETSDAG_START = 7;  // klockan 07:00
     const ARBETSDAG_SLUT = 15;  // klockan 15:00
 
+    // Väder: slumpas viktat per årstid - t.ex. mer regn på hösten, snö bara vintertid.
+    var worldWeather = { sasong: "Sommar", vader: "Sol" };
+
+    const VADER_IKON = { "Sol": "☀️", "Molnigt": "☁️", "Regn": "🌧️", "Åska": "⛈️", "Dimma": "🌫️", "Snö": "❄️", "Blåsigt": "🌬️" };
+    const VADER_VIKTER = {
+        "Vår":     { "Sol": 30, "Molnigt": 25, "Regn": 28, "Åska": 6,  "Dimma": 8,  "Blåsigt": 10, "Snö": 3 },
+        "Sommar":  { "Sol": 45, "Molnigt": 20, "Regn": 15, "Åska": 12, "Dimma": 3,  "Blåsigt": 5,  "Snö": 0 },
+        "Höst":    { "Sol": 15, "Molnigt": 28, "Regn": 32, "Åska": 6,  "Dimma": 12, "Blåsigt": 12, "Snö": 3 },
+        "Vinter":  { "Sol": 15, "Molnigt": 22, "Regn": 3,  "Åska": 0,  "Dimma": 10, "Blåsigt": 10, "Snö": 40 }
+    };
+
+    function slumpaVader() {
+        const vikter = VADER_VIKTER[worldWeather.sasong] || VADER_VIKTER["Sommar"];
+        const total = Object.values(vikter).reduce((a, b) => a + b, 0);
+        let r = Math.random() * total;
+        for (const [typ, vikt] of Object.entries(vikter)) {
+            r -= vikt;
+            if (r <= 0) return typ;
+        }
+        return "Sol";
+    }
+
     function updateWorldClockDisplay() {
         const t = String(worldClock.timme).padStart(2, '0');
+        const ikon = VADER_IKON[worldWeather.vader] || "☀️";
         document.getElementById('world-clock-display').innerText = `Dag ${worldClock.dag}, ${t}:00`;
+        document.getElementById('world-weather-display').innerText = `${ikon} ${worldWeather.vader}`;
+        const sasongSel = document.getElementById('world-season-select');
+        if (sasongSel && sasongSel.value !== worldWeather.sasong) sasongSel.value = worldWeather.sasong;
     }
 
     async function loadWorldClock() {
@@ -2176,23 +2211,42 @@
             if (rad && rad[0] !== undefined && rad[0] !== "") {
                 worldClock.dag = parseInt(rad[0]) || 1;
                 worldClock.timme = parseInt(rad[1]) || 8;
+                worldWeather.sasong = rad[2] || "Sommar";
+                worldWeather.vader = rad[3] || "Sol";
             }
         } catch (e) { console.error("Kunde inte ladda världsklockan", e); }
         updateWorldClockDisplay();
     }
 
     async function saveWorldClockToCloud() {
-        const output = [["Dag", "Timme"], [worldClock.dag, worldClock.timme]];
+        const output = [["Dag", "Timme", "Sasong", "Vader"], [worldClock.dag, worldClock.timme, worldWeather.sasong, worldWeather.vader]];
         await fetch(scriptURL + "?sheet=Varldsklocka", { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
     }
 
     function advanceWorldClock(timmar) {
+        const dagFore = worldClock.dag;
         let totalTimmar = worldClock.dag * 24 + worldClock.timme + timmar;
         worldClock.dag = Math.floor(totalTimmar / 24);
         worldClock.timme = totalTimmar % 24;
+        // Nytt väder slumpas fram varje gång ett nytt dygn passeras - inte varje timme,
+        // ungefär som att vädret oftast håller sig under en dag i taget.
+        if (worldClock.dag !== dagFore) worldWeather.vader = slumpaVader();
         updateWorldClockDisplay();
         saveWorldClockToCloud();
         if (cityViewActive) renderCityMarkers(); // uppdatera vem som syns var
+    }
+
+    function setWorldSeason(sasong) {
+        worldWeather.sasong = sasong;
+        worldWeather.vader = slumpaVader(); // slumpa direkt om utifrån de nya förutsättningarna
+        updateWorldClockDisplay();
+        saveWorldClockToCloud();
+    }
+
+    function rerollWorldWeather() {
+        worldWeather.vader = slumpaVader();
+        updateWorldClockDisplay();
+        saveWorldClockToCloud();
     }
 
     function arArbetstid() {
