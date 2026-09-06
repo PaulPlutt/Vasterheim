@@ -862,6 +862,11 @@
             const bgBounds = [[0, 0], [svgSize, svgSize]];
             cityBackgroundLayer = L.imageOverlay(bgFilnamn, bgBounds, { opacity: 1 }).addTo(map);
             cityBackgroundLayer.bringToBack();
+            // Ljusare kartbakgrund när en riktig bild finns - annars syns appens mörka
+            // temafärg genom eventuella små glapp i bildens egna ytor (t.ex. mellan hus).
+            document.getElementById('map').style.background = '#c9c2a8';
+        } else {
+            document.getElementById('map').style.background = '#0b1d21';
         }
 
         document.getElementById('back-to-world-btn').style.display = 'block';
@@ -877,6 +882,7 @@
         if (cityBackgroundLayer) { map.removeLayer(cityBackgroundLayer); cityBackgroundLayer = null; }
         map.eachLayer(l => { if (l instanceof L.Marker || l instanceof L.Path) map.removeLayer(l); });
         if (!map.hasLayer(worldImageLayer)) worldImageLayer.addTo(map);
+        document.getElementById('map').style.background = '#0b1d21';
         map.setMaxZoom(WORLD_MAX_ZOOM);
         map.fitBounds(worldBounds);
         document.getElementById('back-to-world-btn').style.display = 'none';
