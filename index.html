@@ -140,6 +140,12 @@
         <span id="content-status" style="font-size:10px; color:#8eb0b7; margin-left:10px;">📚 Laddar innehåll...</span>
     </div>
     <div>
+        <div id="world-clock" style="display:none; align-items:center; gap:6px; background:#1a2e33; border:1px solid #2a4d53; border-radius:5px; padding:6px 10px; margin-right:10px;">
+            <span id="world-clock-display" style="font-weight:bold; color:#c9c2a8; font-size:13px;">Dag 1, 08:00</span>
+            <button class="dm-only-btn" style="padding:4px 8px; font-size:11px;" onclick="advanceWorldClock(1)">+1h</button>
+            <button class="dm-only-btn" style="padding:4px 8px; font-size:11px;" onclick="advanceWorldClock(6)">+6h</button>
+            <button class="dm-only-btn" style="padding:4px 8px; font-size:11px;" onclick="advanceWorldClock(24)">+1 dag</button>
+        </div>
         <button id="add-place-btn" class="dm-only-btn" onclick="togglePlacingMode()">+ Lägg till plats</button>
         <button id="add-npc-btn" class="dm-only-btn" onclick="openNPCTab()">+ Lägg till invånare</button>
         <button id="add-spelare-btn" class="dm-only-btn" onclick="openPlayerSheetModal(-1)">+ Lägg till spelare</button>
@@ -264,8 +270,11 @@
                 <div class="input-group"><label>Plats (låst till öppen stad)</label>
                     <input type="text" id="npc-place" readonly style="background:#1a2e33; cursor:not-allowed;">
                 </div>
-                <div class="input-group"><label>Byggnad</label>
+                <div class="input-group"><label>Byggnad (bostad)</label>
                     <select id="npc-building"><option value="">– Välj plats först –</option></select>
+                </div>
+                <div class="input-group"><label>Arbetsplats</label>
+                    <select id="npc-workplace"><option value="">– Ingen/okänd –</option></select>
                 </div>
             </div>
             <div class="editor-row">
@@ -886,6 +895,7 @@
         renderBuildingLegend();
         document.getElementById('legend-toggle-btn').style.display = 'block';
         document.getElementById('building-legend').style.display = legendEnabled ? 'block' : 'none';
+        document.getElementById('world-clock').style.display = 'flex';
         renderCityMarkers();
         drawGrid();
     }
@@ -904,6 +914,7 @@
         document.getElementById('grid-label').style.display = 'none';
         document.getElementById('legend-toggle-btn').style.display = 'none';
         document.getElementById('building-legend').style.display = 'none';
+        document.getElementById('world-clock').style.display = 'none';
         renderMarkers();
         drawGrid(); // rensar rutnätet
     }
@@ -986,7 +997,14 @@
 
         const buildings = contentBank.buildings.filter(b => b.stad === currentCityName);
         buildings.forEach(b => {
-            const residents = savedNPCs.filter(n => n.place === currentCityName && n.building === b.namn);
+            // NYTT: under arbetstid (07-15) visas en invånare på sin ARBETSPLATS om den
+            // har en registrerad - annars (kväll/natt/helg, eller ingen arbetsplats alls,
+            // t.ex. barn) visas den hemma som förut.
+            const residents = savedNPCs.filter(n => {
+                if (n.place !== currentCityName) return false;
+                const nuvarandePlats = (arArbetstid() && n.workplace) ? n.workplace : n.building;
+                return nuvarandePlats === b.namn;
+            });
 
             // Verklig storlek i meter (fallback till rimliga standardmått om byggnaden saknar data,
             // t.ex. äldre handinlagda byggnader från innan Bredd/Djup fanns).
@@ -1003,11 +1021,15 @@
 
             let content = `<div style="color:white;"><b style="color:#2ecc71; font-size:1.1em;">${b.namn}</b><br><span style="color:#8eb0b7; font-size:0.85em;">${b.typ}${b.yrke ? ' · ' + b.yrke : ''}</span>`;
             if (residents.length) {
-                content += `<div style="margin-top:8px; border-top:1px solid #2a4d53; padding-top:6px;"><b>Invånare:</b><ul style="margin:4px 0 0 0; padding-left:18px;">`;
-                residents.forEach(r => { content += `<li>${r.name} <span style="color:#8eb0b7;">(${r.race}, ${r.job || 'inget yrke'})</span></li>`; });
+                content += `<div style="margin-top:8px; border-top:1px solid #2a4d53; padding-top:6px;"><b>Här just nu:</b><ul style="margin:4px 0 0 0; padding-left:18px;">`;
+                residents.forEach(r => {
+                    const harJobb = arArbetstid() && r.workplace === b.namn;
+                    const etikett = harJobb ? "jobbar här" : "hemma";
+                    content += `<li>${r.name} <span style="color:#8eb0b7;">(${r.race}, ${r.job || 'inget yrke'} · ${etikett})</span></li>`;
+                });
                 content += `</ul></div>`;
             } else {
-                content += `<p class="popup-desc">Ingen registrerad invånare här än.</p>`;
+                content += `<p class="popup-desc">Ingen registrerad invånare här just nu.</p>`;
             }
             content += `</div>`;
 
@@ -1356,15 +1378,21 @@
 
     function populateNPCBuildingDropdown(placeName) {
         const sel = document.getElementById('npc-building');
+        const selWork = document.getElementById('npc-workplace');
         const current = sel.value;
+        const currentWork = selWork.value;
         if (!placeName) {
             sel.innerHTML = '<option value="">– Välj plats först –</option>';
+            selWork.innerHTML = '<option value="">– Ingen/okänd –</option>';
             return;
         }
         const buildings = contentBank.buildings.filter(b => b.stad === placeName)
             .sort((a, b) => a.namn.localeCompare(b.namn, 'sv'));
-        sel.innerHTML = '<option value="">– Ingen byggnad vald –</option>' + buildings.map(b => `<option value="${b.namn}">${b.namn} (${b.typ})</option>`).join('');
+        const optioner = buildings.map(b => `<option value="${b.namn}">${b.namn} (${b.typ})</option>`).join('');
+        sel.innerHTML = '<option value="">– Ingen byggnad vald –</option>' + optioner;
         sel.value = current;
+        selWork.innerHTML = '<option value="">– Ingen/okänd –</option>' + optioner;
+        selWork.value = currentWork;
     }
 
     document.getElementById('npc-place').addEventListener('change', function () {
@@ -1407,11 +1435,11 @@
         document.getElementById('npc-hp').value = derived.hp;
     }
 
-    const NPC_HEADERS = ["Namn","Kön","Ras","Ålder","Yrke","Utseende","Personlighet","Religion","EkonomiskStatus","Mål","STR","DEX","KON","INT","VIS","CHA","AC","HP","Plats","Byggnad","Relationer","DM_Anteckningar","Spelar_Anteckningar"];
+    const NPC_HEADERS = ["Namn","Kön","Ras","Ålder","Yrke","Utseende","Personlighet","Religion","EkonomiskStatus","Mål","STR","DEX","KON","INT","VIS","CHA","AC","HP","Plats","Byggnad","Relationer","DM_Anteckningar","Spelar_Anteckningar","Arbetsplats"];
 
     function npcToRow(n) {
         return [n.name, n.gender, n.race, n.age, n.job, n.appearance, n.personality, n.religion, n.economy, n.goal,
-                n.str, n.dex, n.kon, n.int, n.vis, n.cha, n.ac, n.hp, n.place, n.building, n.relations, n.dmNotes, n.playerNotes];
+                n.str, n.dex, n.kon, n.int, n.vis, n.cha, n.ac, n.hp, n.place, n.building, n.relations, n.dmNotes, n.playerNotes, n.workplace || ""];
     }
 
     async function loadCityNPCs(cityName) {
@@ -1423,7 +1451,8 @@
                 appearance: row[5]||"", personality: row[6]||"", religion: row[7]||"", economy: row[8]||"",
                 goal: row[9]||"", str: row[10]||"", dex: row[11]||"", kon: row[12]||"", int: row[13]||"",
                 vis: row[14]||"", cha: row[15]||"", ac: row[16]||"", hp: row[17]||"", place: row[18]||"",
-                building: row[19]||"", relations: row[20]||"", dmNotes: row[21]||"", playerNotes: row[22]||""
+                building: row[19]||"", relations: row[20]||"", dmNotes: row[21]||"", playerNotes: row[22]||"",
+                workplace: row[23]||""
             }));
         } catch (e) {
             console.error("Kunde inte ladda invånare för " + cityName, e);
@@ -1457,6 +1486,7 @@
             hp: document.getElementById('npc-hp').value,
             place: document.getElementById('npc-place').value,
             building: document.getElementById('npc-building').value,
+            workplace: document.getElementById('npc-workplace').value,
             relations: document.getElementById('npc-relations').value,
             dmNotes: document.getElementById('npc-dm-notes').value,
             playerNotes: document.getElementById('npc-player-notes').value
@@ -1517,6 +1547,7 @@
         document.getElementById('npc-place').value = n.place;
         populateNPCBuildingDropdown(n.place);
         document.getElementById('npc-building').value = n.building;
+        document.getElementById('npc-workplace').value = n.workplace || "";
         document.getElementById('npc-relations').value = n.relations;
         document.getElementById('npc-dm-notes').value = n.dmNotes;
         document.getElementById('npc-player-notes').value = n.playerNotes;
@@ -2122,9 +2153,56 @@
         `).join('');
     }
 
+    // ============================================================
+    // NYTT: Världsklocka - en enkel dag/timme-räknare som styr vem som
+    // befinner sig var (hemma eller på jobbet). Global för hela världen,
+    // sparas i en egen liten flik ("Varldsklocka") så den finns kvar
+    // mellan sessioner.
+    // ============================================================
+    var worldClock = { dag: 1, timme: 8 };
+    const ARBETSDAG_START = 7;  // klockan 07:00
+    const ARBETSDAG_SLUT = 15;  // klockan 15:00
+
+    function updateWorldClockDisplay() {
+        const t = String(worldClock.timme).padStart(2, '0');
+        document.getElementById('world-clock-display').innerText = `Dag ${worldClock.dag}, ${t}:00`;
+    }
+
+    async function loadWorldClock() {
+        try {
+            const response = await fetch(scriptURL + "?sheet=Varldsklocka");
+            const data = await response.json();
+            const rad = (data || [])[1];
+            if (rad && rad[0] !== undefined && rad[0] !== "") {
+                worldClock.dag = parseInt(rad[0]) || 1;
+                worldClock.timme = parseInt(rad[1]) || 8;
+            }
+        } catch (e) { console.error("Kunde inte ladda världsklockan", e); }
+        updateWorldClockDisplay();
+    }
+
+    async function saveWorldClockToCloud() {
+        const output = [["Dag", "Timme"], [worldClock.dag, worldClock.timme]];
+        await fetch(scriptURL + "?sheet=Varldsklocka", { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
+    }
+
+    function advanceWorldClock(timmar) {
+        let totalTimmar = worldClock.dag * 24 + worldClock.timme + timmar;
+        worldClock.dag = Math.floor(totalTimmar / 24);
+        worldClock.timme = totalTimmar % 24;
+        updateWorldClockDisplay();
+        saveWorldClockToCloud();
+        if (cityViewActive) renderCityMarkers(); // uppdatera vem som syns var
+    }
+
+    function arArbetstid() {
+        return worldClock.timme >= ARBETSDAG_START && worldClock.timme < ARBETSDAG_SLUT;
+    }
+
     loadFromCloud();
     loadSpelareFromCloud();
     loadContentBank();
+    loadWorldClock();
     // Byggnader/Invånare laddas numera PER STAD, först när du öppnar en
     // stadskarta eller kör "Generera befolkning" (se ensureCityDataLoaded).
 </script>
