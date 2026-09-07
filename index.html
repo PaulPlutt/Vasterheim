@@ -1383,6 +1383,14 @@
         } catch (e) { document.getElementById('cloud-status').innerText = "❌ Fel"; }
     }
 
+    // Den faktiska spar-logiken, separerad från formuläret - så den kan anropas
+    // programmatiskt (t.ex. efter att en ledare utsetts) utan att av misstag läsa
+    // och skriva över med vad som råkar stå i redigeringsformuläret just då.
+    async function persistSavedDataToCloud() {
+        const output = [["Rubrik"], ...savedData.map(m => [m.name, m.type, m.lat||m.coords[0], m.lng||m.coords[1], m.pop, m.pol, m.res, m.danger, m.leaders, m.allies, m.desc, m.secret, m.img1, m.img2, m.img3, "", "", m.dimg1, m.dimg2, "", "", ""])];
+        await fetch(scriptURL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
+    }
+
     async function saveToCloud() {
         const name = document.getElementById('node-name').value;
         if(!currentCoords || !name) return alert("Välj plats på kartan och skriv ett namn!");
@@ -1401,9 +1409,7 @@
         if (idx > -1) savedData[idx] = p; else savedData.push(p);
 
         document.getElementById('cloud-status').innerText = "📤 Sparar...";
-        const output = [["Rubrik"], ...savedData.map(m => [m.name, m.type, m.lat||m.coords[0], m.lng||m.coords[1], m.pop, m.pol, m.res, m.danger, m.leaders, m.allies, m.desc, m.secret, m.img1, m.img2, m.img3, "", "", m.dimg1, m.dimg2, "", "", ""])];
-
-        await fetch(scriptURL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(output) });
+        await persistSavedDataToCloud();
 
         document.getElementById('edit-index').value = "-1";
         document.getElementById('cloud-status').innerText = "✅ Sparat";
@@ -2160,7 +2166,7 @@
             const ledarNPC = newNPCs.find(n => n.job === "Ledare" && n.building === `${cityName}s Borg`);
             if (ledarNPC && city) {
                 city.pol = ledarNPC.name;
-                await saveToCloud();
+                await persistSavedDataToCloud();
                 renderMarkers();
             }
         }
