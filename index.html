@@ -1108,6 +1108,10 @@
             svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="#3e2c1c" stroke-width="2.5"/>`;
         });
 
+        // Ytterväggen, tjock - ritas HÄR (inte sist), så att fönster och entrédörr
+        // nedan faktiskt syns som öppningar istället för att målas över av den.
+        svg += `<rect x="${marginal}" y="${marginal}" width="${bredd}" height="${djup}" fill="none" stroke="#221708" stroke-width="5"/>`;
+
         // Dörröppningar mellan angränsande rum - exakt på den delade väggen
         (layout.dorrar || []).forEach(d => {
             const mittPos = (d.start + d.slut) / 2;
@@ -1127,9 +1131,9 @@
             const w = r.bredd * SKALA, h = r.djup * SKALA;
             const FBREDD = 14;
             if (Math.abs(r.y) < 0.05 && w > 40) {
-                svg += `<rect x="${x + w/2 - FBREDD/2}" y="${y - 1.5}" width="${FBREDD}" height="3" fill="#7ec8e3"/>`;
+                svg += `<rect x="${x + w/2 - FBREDD/2}" y="${y - 2.5}" width="${FBREDD}" height="5" fill="#7ec8e3"/>`;
             } else if (Math.abs(r.x) < 0.05 && h > 40) {
-                svg += `<rect x="${x - 1.5}" y="${y + h/2 - FBREDD/2}" width="3" height="${FBREDD}" fill="#7ec8e3"/>`;
+                svg += `<rect x="${x - 2.5}" y="${y + h/2 - FBREDD/2}" width="5" height="${FBREDD}" fill="#7ec8e3"/>`;
             }
         });
 
@@ -1138,12 +1142,10 @@
         if (entreRum) {
             const ex = marginal + (entreRum.x + entreRum.bredd/2) * SKALA;
             const ey = marginal + djup;
-            svg += `<rect x="${ex - 11}" y="${ey - 1.5}" width="22" height="4" fill="#f4ecd8"/>`;
+            svg += `<rect x="${ex - 11}" y="${ey - 2.5}" width="22" height="5" fill="#f4ecd8"/>`;
             svg += `<text x="${ex}" y="${ey + 16}" text-anchor="middle" font-size="9" fill="#8a6d4a">Entré</text>`;
         }
 
-        // Ytterväggen, tjock, ritas sist ovanpå allt
-        svg += `<rect x="${marginal}" y="${marginal}" width="${bredd}" height="${djup}" fill="none" stroke="#221708" stroke-width="5"/>`;
         svg += `</svg>`;
         return svg;
     }
