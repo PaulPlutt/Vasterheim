@@ -891,20 +891,44 @@
     }
 
     // Rumsmallar per byggnadstyp: hur många rum, vad de heter, och vilka möbler.
+    // Rumsmallar per byggnadskategori. Varje kategori har en eller flera "tiers"
+    // (efter golvyta i kvm) och varje tier anger BÅDE rumslistan OCH exakt vilket
+    // rum som är entrérummet - inget mer gissande utifrån en delad "publika rum"-
+    // lista, som annars kan krocka mellan kategorier (t.ex. "Kök" är naturligt
+    // publikt i en bostad, men ska ALDRIG vara entrérum i ett värdshus).
     const RUMSMALLAR = {
-        "Bostad": { smaRum: ["Allrum"], medelRum: ["Kök/Allrum", "Sovrum"], storaRum: ["Kök", "Allrum", "Sovrum"] },
-        "Taverna": { rum: ["Skänkrum", "Kök", "Förråd"] },
-        "Värdshus": { rum: ["Skänkrum", "Kök", "Gästrum"] },
-        "Handel": { rum: ["Butik", "Förråd"] },
-        "Hantverk": { rum: ["Verkstad", "Bostad"] },
-        "Religiös": { rum: ["Sal", "Sakristia"] },
-        "Vakt": { rum: ["Vaktrum", "Cell"] },
-        "Stadshus": { rum: ["Sal", "Kontor"] },
-        "Borg": { rum: ["Sal", "Sovkammare", "Skattkammare"] },
-        "Skola": { rum: ["Klassrum", "Klassrum"] },
-        "Nöje": { rum: ["Sal", "Kontor"] },
-        "Sjukvård": { rum: ["Mottagning", "Sjuksal"] },
-        "Övrigt": { rum: ["Rum", "Förråd"] }
+        "Bostad": { tiers: [
+            { max: 45, rum: ["Allrum"], entre: "Allrum" },
+            { max: 90, rum: ["Kök/Allrum", "Sovrum"], entre: "Kök/Allrum" },
+            { max: Infinity, rum: ["Kök", "Allrum", "Sovrum"], entre: "Allrum" }
+        ]},
+        "Taverna": { tiers: [
+            { max: 40, rum: ["Skänkrum", "Kök"], entre: "Skänkrum" },
+            { max: 80, rum: ["Skänkrum", "Kök", "Förråd"], entre: "Skänkrum" },
+            { max: Infinity, rum: ["Skänkrum", "Kök", "Förråd", "Sal"], entre: "Skänkrum" }
+        ]},
+        "Värdshus": { tiers: [
+            { max: 55, rum: ["Skänkrum", "Kök", "Gästrum"], entre: "Skänkrum" },
+            { max: 100, rum: ["Skänkrum", "Kök", "Gästrum", "Gästrum"], entre: "Skänkrum" },
+            { max: Infinity, rum: ["Skänkrum", "Kök", "Förråd", "Gästrum", "Gästrum", "Gästrum"], entre: "Skänkrum" }
+        ]},
+        "Handel": { tiers: [
+            { max: 30, rum: ["Butik"], entre: "Butik" },
+            { max: 60, rum: ["Butik", "Förråd"], entre: "Butik" },
+            { max: Infinity, rum: ["Butik", "Förråd", "Kontor"], entre: "Butik" }
+        ]},
+        "Hantverk": { tiers: [{ max: Infinity, rum: ["Verkstad", "Bostad"], entre: "Verkstad" }] },
+        "Religiös": { tiers: [{ max: Infinity, rum: ["Sal", "Sakristia"], entre: "Sal" }] },
+        "Vakt": { tiers: [{ max: Infinity, rum: ["Vaktrum", "Cell"], entre: "Vaktrum" }] },
+        "Stadshus": { tiers: [{ max: Infinity, rum: ["Sal", "Kontor"], entre: "Sal" }] },
+        "Borg": { tiers: [
+            { max: 150, rum: ["Sal", "Sovkammare", "Skattkammare"], entre: "Sal" },
+            { max: Infinity, rum: ["Sal", "Sovkammare", "Skattkammare", "Vaktrum", "Kontor"], entre: "Sal" }
+        ]},
+        "Skola": { tiers: [{ max: Infinity, rum: ["Klassrum", "Klassrum"], entre: "Klassrum" }] },
+        "Nöje": { tiers: [{ max: Infinity, rum: ["Sal", "Kontor"], entre: "Sal" }] },
+        "Sjukvård": { tiers: [{ max: Infinity, rum: ["Mottagning", "Sjuksal"], entre: "Mottagning" }] },
+        "Övrigt": { tiers: [{ max: Infinity, rum: ["Rum", "Förråd"], entre: "Rum" }] }
     };
     // Fler och tyngre möbler per rum - fylls på med FURNITURE_STORLEK nedan för att
     // ge en rimlig fysisk storlek (i meter) åt varje pjäs vid ritning.
@@ -926,26 +950,26 @@
     };
     // Rum som inte ska få fönster (bakre/mörka utrymmen).
     const INGA_FONSTER = ["Förråd", "Cell", "Skattkammare", "Sakristia"];
-    // Rum som gärna får bli entrérum om de ligger mot gatan (söderväggen).
-    const PUBLIKA_RUM = ["Butik", "Skänkrum", "Sal", "Vaktrum", "Kontor", "Klassrum", "Allrum", "Kök/Allrum", "Kök", "Verkstad", "Gästrum", "Mottagning"];
     // Rum där sängantalet ska kopplas till byggnadens antal invånare istället för
     // att alltid vara exakt en säng, oavsett om det bor 1 eller 15 personer där.
     const SANG_TYP_PER_RUM = { "Sovrum": "Säng", "Sovkammare": "Säng", "Gästrum": "Säng", "Cell": "Halmbädd" };
 
-    function valjRumslista(typ, bredd, djup, rng) {
-        const mall = RUMSMALLAR[typ] || RUMSMALLAR["Övrigt"];
-        if (mall.rum) return mall.rum;
-        // Bostad har storleksberoende antal rum
+    // Hämtar rätt tier (rumslista + namngivet entrérum) för en kategori utifrån
+    // byggnadens golvyta.
+    function hamtaRumskonfiguration(kategori, bredd, djup) {
+        const mall = RUMSMALLAR[kategori] || RUMSMALLAR["Övrigt"];
         const yta = bredd * djup;
-        if (yta < 45) return mall.smaRum;
-        if (yta < 90) return mall.medelRum;
-        return mall.storaRum;
+        for (const tier of mall.tiers) { if (yta < tier.max) return tier; }
+        return mall.tiers[mall.tiers.length - 1];
     }
 
     // Delar upp byggnadens rektangel i N rum via rekursiv delning (BSP): halverar
     // rumslistan om och om igen längs den längsta sidan, tills varje rum har fått
-    // sin egen rektangel. Fungerar för valfritt antal rum (till skillnad från de
-    // gamla hårdkodade 1/2/3/4-fallen) och ger naturligt varierade proportioner.
+    // sin egen rektangel. Fungerar för valfritt antal rum och ger naturligt
+    // varierade proportioner. Ingen "publikt rum"-styrning behövs här längre -
+    // eftersom varje kategori nu pekar ut sitt entrérum explicit (se RUMSMALLAR),
+    // spelar det ingen roll geometriskt var i huset det rummet hamnar; vi hittar
+    // bara vilken av dess väggar som råkar vara en yttervägg (se hittaEntresida).
     function delaUppIRum(bredd, djup, namn, rng) {
         function delaRek(x, y, w, h, lista) {
             if (lista.length === 1) return [{ namn: lista[0], x, y, bredd: w, djup: h }];
@@ -958,14 +982,6 @@
                 return [...delaRek(x, y, w1, h, forsta), ...delaRek(x + w1, y, w - w1, h, andra)];
             } else {
                 const h1 = h * andel;
-                // Söder (högre y, närmast entrén) ska helst få det publika rummet
-                // (Butik, Skänkrum, Sal osv) - annars kan t.ex. en butik hamna
-                // längst bak i huset med förrådet mot gatan.
-                const forstaPublik = forsta.some(n => PUBLIKA_RUM.includes(n));
-                const andraPublik = andra.some(n => PUBLIKA_RUM.includes(n));
-                if (forstaPublik && !andraPublik) {
-                    return [...delaRek(x, y + (h - h1), w, h1, forsta), ...delaRek(x, y, w, h - h1, andra)];
-                }
                 return [...delaRek(x, y, w, h1, forsta), ...delaRek(x, y + h1, w, h - h1, andra)];
             }
         }
@@ -1001,14 +1017,18 @@
         return granser;
     }
 
-    // Entrérummet är det rum som ligger mot söderväggen (byggnadens "framsida") -
-    // föredrar publika rum som Butik/Skänkrum/Sal om flera rum ligger där.
-    function valjEntrerum(rum, totalDjup) {
+    // Hittar vilken/vilka av byggnadens fyra ytterväggar ett givet rum gränsar
+    // till (ett rum kan gränsa till flera, t.ex. ett hörnrum). Används för att
+    // placera entrédörren på RÄTT sida av det NAMNGIVNA entrérummet, oavsett var
+    // BSP-uppdelningen råkade lägga det (söder föredras om möjligt, som en gatufasad).
+    function hittaYtterVaggar(r, totalBredd, totalDjup) {
         const EPS = 0.05;
-        const kandidater = rum.filter(r => Math.abs((r.y + r.djup) - totalDjup) < EPS);
-        const publik = kandidater.find(r => PUBLIKA_RUM.includes(r.namn));
-        const val = publik || kandidater[0] || rum[0];
-        return rum.indexOf(val);
+        const sidor = [];
+        if (Math.abs(r.y + r.djup - totalDjup) < EPS) sidor.push('syd');
+        if (Math.abs(r.x) < EPS) sidor.push('vast');
+        if (Math.abs(r.x + r.bredd - totalBredd) < EPS) sidor.push('ost');
+        if (Math.abs(r.y) < EPS) sidor.push('nord');
+        return sidor;
     }
 
     // Väljer vilka väggöppningar som blir dörrar: bygger ett spann-träd från
@@ -1036,8 +1056,8 @@
         const rng = skapaSeedadRNG(byggnad.namn + "|" + byggnad.stad);
         const bredd = byggnad.bredd || 8, djup = byggnad.djup || 10;
         const kategori = kategoriForTyp(byggnad.typ);
-        const rumsnamn = valjRumslista(kategori, bredd, djup, rng);
-        const rum = delaUppIRum(bredd, djup, rumsnamn, rng);
+        const konfig = hamtaRumskonfiguration(kategori, bredd, djup);
+        const rum = delaUppIRum(bredd, djup, konfig.rum, rng);
 
         // Grundmöblering + fyllnadsmöbler: annars ser ett stort rum tomt ut med bara
         // 2-3 pjäser oavsett golvyta. En pjäs till läggs till per ~7 extra kvadratmeter
@@ -1075,7 +1095,10 @@
         }
 
         const granser = hittaGranser(rum);
-        const entreIdx = valjEntrerum(rum, djup);
+        // Entrérummet är nu ALLTID det rum kategorins mall pekar ut vid namn - inte
+        // ett rum som råkar ligga mot söder och matcha en gissad "publik"-lista.
+        let entreIdx = rum.findIndex(r => r.namn === konfig.entre);
+        if (entreIdx === -1) entreIdx = 0;
         const dorrar = rum.length > 1 ? valjDorrar(rum, granser, entreIdx, rng) : [];
 
         return { bredd, djup, rum, dorrar, entreIdx };
@@ -1241,26 +1264,52 @@
             }
         });
 
-        // Fönster på ytterväggar (norr/väster), utom i förråd/celler och entrérummet
+        // Fönster på ytterväggar, utom i förråd/celler och på entrédörrens egen
+        // sida av entrérummet. Kollar nu alla fyra väggar (inte bara norr/väster)
+        // så ett rum som råkar hamna öster- eller söderut också kan få fönster.
+        const entreSidor = layout.rum[layout.entreIdx] ? hittaYtterVaggar(layout.rum[layout.entreIdx], layout.bredd, layout.djup) : [];
         layout.rum.forEach((r, i) => {
-            if (INGA_FONSTER.includes(r.namn) || i === layout.entreIdx) return;
+            if (INGA_FONSTER.includes(r.namn)) return;
             const x = marginal + r.x * SKALA, y = marginal + r.y * SKALA;
             const w = r.bredd * SKALA, h = r.djup * SKALA;
             const FBREDD = 14;
-            if (Math.abs(r.y) < 0.05 && w > 40) {
-                svg += `<rect x="${x + w/2 - FBREDD/2}" y="${y - 2.5}" width="${FBREDD}" height="5" fill="#7ec8e3"/>`;
-            } else if (Math.abs(r.x) < 0.05 && h > 40) {
-                svg += `<rect x="${x - 2.5}" y="${y + h/2 - FBREDD/2}" width="5" height="${FBREDD}" fill="#7ec8e3"/>`;
-            }
+            const sidor = hittaYtterVaggar(r, layout.bredd, layout.djup);
+            const ärEntrerum = i === layout.entreIdx;
+            sidor.forEach(sida => {
+                if (ärEntrerum && entreSidor.length === 1 && sida === entreSidor[0]) return; // hoppa bara den vägg entrén faktiskt sitter på
+                if (sida === 'nord' && w > 40) svg += `<rect x="${x + w/2 - FBREDD/2}" y="${y - 2.5}" width="${FBREDD}" height="5" fill="#7ec8e3"/>`;
+                else if (sida === 'syd' && w > 40) svg += `<rect x="${x + w/2 - FBREDD/2}" y="${y + h - 2.5}" width="${FBREDD}" height="5" fill="#7ec8e3"/>`;
+                else if (sida === 'vast' && h > 40) svg += `<rect x="${x - 2.5}" y="${y + h/2 - FBREDD/2}" width="5" height="${FBREDD}" fill="#7ec8e3"/>`;
+                else if (sida === 'ost' && h > 40) svg += `<rect x="${x + w - 2.5}" y="${y + h/2 - FBREDD/2}" width="5" height="${FBREDD}" fill="#7ec8e3"/>`;
+            });
         });
 
-        // Gatuentré: dörr i ytterväggen på entrérummet, alltid mot söder
+        // Gatuentré: dörr i ytterväggen på det NAMNGIVNA entrérummet, på vilken av
+        // dess väggar som faktiskt är en yttervägg (söder föredras, som en gatufasad,
+        // men huset må ha lagt entrérummet mot en annan sida).
         const entreRum = layout.rum[layout.entreIdx];
-        if (entreRum) {
-            const ex = marginal + (entreRum.x + entreRum.bredd/2) * SKALA;
-            const ey = marginal + djup;
-            svg += `<rect x="${ex - 11}" y="${ey - 2.5}" width="22" height="5" fill="#f4ecd8"/>`;
-            svg += `<text x="${ex}" y="${ey + 16}" text-anchor="middle" font-size="9" fill="#8a6d4a">Entré</text>`;
+        if (entreRum && entreSidor.length) {
+            const PRIORITET = ['syd', 'vast', 'ost', 'nord'];
+            const entreSida = PRIORITET.find(s => entreSidor.includes(s)) || entreSidor[0];
+            const ex = marginal + entreRum.x * SKALA, ey = marginal + entreRum.y * SKALA;
+            const ew = entreRum.bredd * SKALA, eh = entreRum.djup * SKALA;
+            if (entreSida === 'syd') {
+                const cx = ex + ew/2, cy = marginal + djup;
+                svg += `<rect x="${cx - 11}" y="${cy - 2.5}" width="22" height="5" fill="#f4ecd8"/>`;
+                svg += `<text x="${cx}" y="${cy + 16}" text-anchor="middle" font-size="9" fill="#8a6d4a">Entré</text>`;
+            } else if (entreSida === 'nord') {
+                const cx = ex + ew/2, cy = marginal;
+                svg += `<rect x="${cx - 11}" y="${cy - 2.5}" width="22" height="5" fill="#f4ecd8"/>`;
+                svg += `<text x="${cx}" y="${cy - 8}" text-anchor="middle" font-size="9" fill="#8a6d4a">Entré</text>`;
+            } else if (entreSida === 'vast') {
+                const cx = marginal, cy = ey + eh/2;
+                svg += `<rect x="${cx - 2.5}" y="${cy - 11}" width="5" height="22" fill="#f4ecd8"/>`;
+                svg += `<text x="${cx - 6}" y="${cy + 3}" text-anchor="end" font-size="9" fill="#8a6d4a">Entré</text>`;
+            } else {
+                const cx = marginal + bredd, cy = ey + eh/2;
+                svg += `<rect x="${cx - 2.5}" y="${cy - 11}" width="5" height="22" fill="#f4ecd8"/>`;
+                svg += `<text x="${cx + 6}" y="${cy + 3}" text-anchor="start" font-size="9" fill="#8a6d4a">Entré</text>`;
+            }
         }
 
         svg += `</svg>`;
