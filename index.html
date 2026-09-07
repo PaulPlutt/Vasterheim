@@ -806,18 +806,66 @@
     }
     var CITY_CANVAS_SIZE = 1000;
 
-    // Färg per byggnadstyp - samma palett som stadsgeneratorn (p5.js), för konsekvens
+    // Färg per byggnadstyp - samma palett som stadsgeneratorn (p5.js), för konsekvens.
+    // "Nöje" och "Sjukvård" är nya kategorier (se KATEGORI_FOR_TYP nedan) för sådant som
+    // inte riktigt är Hantverk eller Stadshus.
     const TYP_FARG = {
         "Bostad": "#8b5a2b", "Handel": "#daa520", "Taverna": "#b22222", "Värdshus": "#cd853f",
         "Hantverk": "#696969", "Religiös": "#ff8c00", "Vakt": "#191970",
-        "Stadshus": "#464678", "Borg": "#6a1b9a", "Skola": "#4a90a4", "Övrigt": "#556b2f"
+        "Stadshus": "#464678", "Borg": "#6a1b9a", "Skola": "#4a90a4", "Övrigt": "#556b2f",
+        "Nöje": "#c2185b", "Sjukvård": "#2e8b57"
     };
-    function fargForTyp(typ) {
-        // Bakåtkompatibilitet med äldre data som fortfarande har snedstreck i namnet
+
+    // NYTT: Byggnadstyper-fliken i kalkylarket listar ~90 detaljerade byggnadstyper
+    // (Smedja, Handelsbod, Apotek, Kyrka, Bordell, osv) som "Generera befolkning"
+    // kan slumpa fram. Varken färgläggningen eller planritnings-generatorn känner
+    // till alla dessa namn rakt av - den här mappningen översätter varje detaljerad
+    // typ till en av de arketyper (Bostad/Handel/Hantverk/...) som redan har en
+    // färg och en rumsmall. Byggnadens EGNA namn/typ visas fortfarande oförändrat
+    // i popupen - det är bara färgen och rumsindelningen som normaliseras.
+    const KATEGORI_FOR_TYP = {
+        "Hem": "Bostad", "Bostadshus": "Bostad", "Smedsmästarens bostad": "Bostad",
+        "Mjölnarbostad": "Bostad", "Fiskarstuga": "Bostad", "Jägarekoja": "Bostad", "Skogvaktartorp": "Bostad",
+        "Taverna": "Taverna", "Kvarterskrog": "Taverna", "Gästabudssal": "Taverna", "Tehus": "Taverna", "Kafé": "Taverna",
+        "Värdshus": "Värdshus", "Vandrarhem": "Värdshus",
+        "Smedja": "Hantverk", "Smedja vid gruvan": "Hantverk", "Bageri": "Hantverk", "Skomakeri": "Hantverk",
+        "Skrädderi": "Hantverk", "Kvarn": "Hantverk", "Vattenmölla": "Hantverk", "Garveri": "Hantverk",
+        "Bryggeri": "Hantverk", "Slakteri": "Hantverk", "Örtasmedja": "Hantverk", "Snickeri": "Hantverk",
+        "Vagnmakeri": "Hantverk", "Vagnmakare": "Hantverk", "Krukmakeri": "Hantverk", "Sadelmakeri": "Hantverk",
+        "Sadelkammare": "Hantverk", "Häststall": "Hantverk", "Pansarsmedja": "Hantverk", "Glasblåseri": "Hantverk",
+        "Tunnbinderi": "Hantverk", "Stenhuggeri": "Hantverk", "Repslageri": "Hantverk", "Ljusstöperi": "Hantverk",
+        "Urmakeri": "Hantverk", "Pappersbruk": "Hantverk", "Varv": "Hantverk", "Skeppsbygge": "Hantverk",
+        "Kalkbrännugn": "Hantverk", "Tegelbruk": "Hantverk", "Vinfatseri": "Hantverk", "Destilleri": "Hantverk",
+        "Handelsbod": "Handel", "Fiskbod": "Handel", "Köttmarknad": "Handel", "Bokhandel": "Handel",
+        "Apotek": "Handel", "Vapenaffär": "Handel", "Fiskmarknad": "Handel", "Guldsmedsaffär": "Handel",
+        "Juvelerare": "Handel", "Magibutik": "Handel", "Auktionshus": "Handel", "Skrothandel": "Handel",
+        "Pantbank": "Handel", "Växell1kontor": "Handel", "Växelkontor": "Handel",
+        "Kyrka": "Religiös", "Tempel": "Religiös", "Katedral": "Religiös", "Kloster": "Religiös",
+        "Vaktstation": "Vakt", "Tillsynskontor": "Vakt", "Fängelse": "Vakt", "Skampåle": "Vakt",
+        "Tullstation": "Vakt", "Vakt- och försvarstorn": "Vakt",
+        "Stadshus": "Stadshus", "Bankpalats": "Stadshus", "Tullhus": "Stadshus", "Hamnkontor": "Stadshus",
+        "Gruvkontor": "Stadshus",
+        "Kasern": "Borg", "Borg": "Borg", "Citadell": "Borg",
+        "Bibliotek": "Skola", "Akademi": "Skola", "Universitet": "Skola", "Skola": "Skola",
+        "Badhus": "Nöje", "Frisersalong": "Nöje", "Gilleshus": "Nöje", "Klubblokal": "Nöje",
+        "Spelhus": "Nöje", "Bordell": "Nöje", "Teater": "Nöje", "Arena": "Nöje",
+        "Sjukstuga": "Sjukvård", "Tandläkarmottagning": "Sjukvård",
+        "Spannmålsmagasin": "Övrigt", "Fyr": "Övrigt", "Magasinsbyggnad": "Övrigt", "Krutdurk": "Övrigt",
+        "Vapenförråd": "Övrigt", "Vindkraftverk": "Övrigt", "Malm- och mineralförråd": "Övrigt",
+        "Vattenreservoar": "Övrigt", "Vindskydd": "Övrigt"
+    };
+    // Slår upp en byggnads arketyp: exakt träff (redan en känd arketyp, t.ex. i
+    // befintliga städer) vinner alltid, annars slås den detaljerade typen upp i
+    // KATEGORI_FOR_TYP, med "Övrigt" som sista utväg.
+    function kategoriForTyp(typ) {
         const ALIAS = { "Taverna/Värdshus": "Taverna", "Stadshus/Rådhus": "Stadshus",
                          "Handel/Butik": "Handel", "Vakt/Säkerhet": "Vakt", "Borg/Palats": "Borg" };
         const uppslag = ALIAS[typ] || typ;
-        return TYP_FARG[uppslag] || "#f1c40f";
+        if (TYP_FARG[uppslag]) return uppslag;
+        return KATEGORI_FOR_TYP[uppslag] || "Övrigt";
+    }
+    function fargForTyp(typ) {
+        return TYP_FARG[kategoriForTyp(typ)] || "#f1c40f";
     }
 
     // ============================================================
@@ -842,8 +890,7 @@
         };
     }
 
-    // Rumsmallar per byggnadstyp: hur många rum, vad de heter, och vilka möbler
-    // (enkla, få per rum - ingen detaljnivå med t.ex. flaskor eller tavlor).
+    // Rumsmallar per byggnadstyp: hur många rum, vad de heter, och vilka möbler.
     const RUMSMALLAR = {
         "Bostad": { smaRum: ["Allrum"], medelRum: ["Kök/Allrum", "Sovrum"], storaRum: ["Kök", "Allrum", "Sovrum"] },
         "Taverna": { rum: ["Skänkrum", "Kök", "Förråd"] },
@@ -855,16 +902,32 @@
         "Stadshus": { rum: ["Sal", "Kontor"] },
         "Borg": { rum: ["Sal", "Sovkammare", "Skattkammare"] },
         "Skola": { rum: ["Klassrum", "Klassrum"] },
+        "Nöje": { rum: ["Sal", "Kontor"] },
+        "Sjukvård": { rum: ["Mottagning", "Sjuksal"] },
         "Övrigt": { rum: ["Rum", "Förråd"] }
     };
+    // Fler och tyngre möbler per rum - fylls på med FURNITURE_STORLEK nedan för att
+    // ge en rimlig fysisk storlek (i meter) åt varje pjäs vid ritning.
     const MOBLER_PER_RUM = {
-        "Allrum": ["Bord", "Stolar"], "Kök/Allrum": ["Bord", "Spis"], "Sovrum": ["Säng", "Skåp"],
-        "Kök": ["Spis", "Bord"], "Skänkrum": ["Disk", "Bord"], "Förråd": ["Hyllor"],
-        "Gästrum": ["Säng"], "Butik": ["Disk", "Hyllor"], "Verkstad": ["Arbetsbänk"],
-        "Bostad": ["Säng", "Bord"], "Sal": ["Bord"], "Sakristia": ["Skåp"],
-        "Vaktrum": ["Bord", "Vapenställ"], "Cell": ["Halmbädd"], "Kontor": ["Skrivbord"],
-        "Sovkammare": ["Säng", "Skåp"], "Skattkammare": ["Kista"], "Klassrum": ["Bänkar"]
+        "Allrum": ["Bord", "Stolar", "Skåp"], "Kök/Allrum": ["Bord", "Spis", "Skåp"], "Sovrum": ["Säng", "Skåp", "Nattduksbord"],
+        "Kök": ["Spis", "Bord", "Skåp"], "Skänkrum": ["Disk", "Bord", "Stolar"], "Förråd": ["Hyllor", "Tunnor", "Tunnor"],
+        "Gästrum": ["Säng", "Skåp"], "Butik": ["Disk", "Hyllor", "Hyllor"], "Verkstad": ["Arbetsbänk", "Hyllor"],
+        "Bostad": ["Säng", "Bord", "Skåp"], "Sal": ["Bord", "Stolar"], "Sakristia": ["Skåp", "Kista"],
+        "Vaktrum": ["Bord", "Vapenställ"], "Cell": ["Halmbädd"], "Kontor": ["Skrivbord", "Skåp"],
+        "Sovkammare": ["Säng", "Skåp", "Kista"], "Skattkammare": ["Kista", "Kista"], "Klassrum": ["Bänkar", "Bänkar", "Bänkar"],
+        "Mottagning": ["Skrivbord", "Skåp"], "Sjuksal": ["Säng", "Säng", "Skåp"]
     };
+    // Ungefärliga verkliga mått [bredd, djup] i meter för varje möbeltyp.
+    const FURNITURE_STORLEK = {
+        "Bord": [1.2, 0.8], "Stolar": [0.9, 0.5], "Säng": [1.4, 2.0], "Skåp": [1.0, 0.5],
+        "Spis": [1.0, 0.7], "Disk": [1.8, 0.6], "Hyllor": [1.6, 0.4], "Tunnor": [0.6, 0.6],
+        "Arbetsbänk": [1.6, 0.7], "Nattduksbord": [0.5, 0.5], "Kista": [0.9, 0.5],
+        "Vapenställ": [1.2, 0.4], "Halmbädd": [1.2, 1.8], "Skrivbord": [1.3, 0.7], "Bänkar": [1.6, 0.5]
+    };
+    // Rum som inte ska få fönster (bakre/mörka utrymmen).
+    const INGA_FONSTER = ["Förråd", "Cell", "Skattkammare", "Sakristia"];
+    // Rum som gärna får bli entrérum om de ligger mot gatan (söderväggen).
+    const PUBLIKA_RUM = ["Butik", "Skänkrum", "Sal", "Vaktrum", "Kontor", "Klassrum", "Allrum", "Kök/Allrum", "Kök", "Verkstad", "Gästrum", "Mottagning"];
 
     function valjRumslista(typ, bredd, djup, rng) {
         const mall = RUMSMALLAR[typ] || RUMSMALLAR["Övrigt"];
@@ -876,108 +939,211 @@
         return mall.storaRum;
     }
 
-    // Delar upp byggnadens rektangel i N rum, enkel rutnäts-/delningslogik.
+    // Delar upp byggnadens rektangel i N rum via rekursiv delning (BSP): halverar
+    // rumslistan om och om igen längs den längsta sidan, tills varje rum har fått
+    // sin egen rektangel. Fungerar för valfritt antal rum (till skillnad från de
+    // gamla hårdkodade 1/2/3/4-fallen) och ger naturligt varierade proportioner.
     function delaUppIRum(bredd, djup, namn, rng) {
-        const n = namn.length;
-        const rum = [];
-        if (n === 1) {
-            rum.push({ namn: namn[0], x: 0, y: 0, bredd, djup });
-        } else if (n === 2) {
-            const langsBredd = bredd >= djup;
-            const andel = 0.45 + rng() * 0.2; // 45-65%
+        function delaRek(x, y, w, h, lista) {
+            if (lista.length === 1) return [{ namn: lista[0], x, y, bredd: w, djup: h }];
+            const mitt = Math.ceil(lista.length / 2);
+            const forsta = lista.slice(0, mitt), andra = lista.slice(mitt);
+            const langsBredd = w >= h;
+            const andel = 0.38 + rng() * 0.24; // 38-62%
             if (langsBredd) {
-                rum.push({ namn: namn[0], x: 0, y: 0, bredd: bredd * andel, djup });
-                rum.push({ namn: namn[1], x: bredd * andel, y: 0, bredd: bredd * (1 - andel), djup });
+                const w1 = w * andel;
+                return [...delaRek(x, y, w1, h, forsta), ...delaRek(x + w1, y, w - w1, h, andra)];
             } else {
-                rum.push({ namn: namn[0], x: 0, y: 0, bredd, djup: djup * andel });
-                rum.push({ namn: namn[1], x: 0, y: djup * andel, bredd, djup: djup * (1 - andel) });
-            }
-        } else if (n === 3) {
-            const forstaAndel = 0.4 + rng() * 0.15;
-            const langsBredd = bredd >= djup;
-            if (langsBredd) {
-                const b1 = bredd * forstaAndel, bRest = bredd - b1;
-                rum.push({ namn: namn[0], x: 0, y: 0, bredd: b1, djup });
-                const andraAndel = 0.4 + rng() * 0.2;
-                rum.push({ namn: namn[1], x: b1, y: 0, bredd: bRest, djup: djup * andraAndel });
-                rum.push({ namn: namn[2], x: b1, y: djup * andraAndel, bredd: bRest, djup: djup * (1 - andraAndel) });
-            } else {
-                const d1 = djup * forstaAndel, dRest = djup - d1;
-                rum.push({ namn: namn[0], x: 0, y: 0, bredd, djup: d1 });
-                const andraAndel = 0.4 + rng() * 0.2;
-                rum.push({ namn: namn[1], x: 0, y: d1, bredd: bredd * andraAndel, djup: dRest });
-                rum.push({ namn: namn[2], x: bredd * andraAndel, y: d1, bredd: bredd * (1 - andraAndel), djup: dRest });
-            }
-        } else {
-            // 4+ rum: enkelt 2x2-rutnät med lite varierad storlek
-            const bAndel = 0.42 + rng() * 0.16, dAndel = 0.42 + rng() * 0.16;
-            const positioner = [[0,0], [bAndel,0], [0,dAndel], [bAndel,dAndel]];
-            for (let i = 0; i < Math.min(n, 4); i++) {
-                const [px, py] = positioner[i];
-                rum.push({
-                    namn: namn[i],
-                    x: bredd * px, y: djup * py,
-                    bredd: bredd * (px === 0 ? bAndel : 1 - bAndel),
-                    djup: djup * (py === 0 ? dAndel : 1 - dAndel)
-                });
+                const h1 = h * andel;
+                // Söder (högre y, närmast entrén) ska helst få det publika rummet
+                // (Butik, Skänkrum, Sal osv) - annars kan t.ex. en butik hamna
+                // längst bak i huset med förrådet mot gatan.
+                const forstaPublik = forsta.some(n => PUBLIKA_RUM.includes(n));
+                const andraPublik = andra.some(n => PUBLIKA_RUM.includes(n));
+                if (forstaPublik && !andraPublik) {
+                    return [...delaRek(x, y + (h - h1), w, h1, forsta), ...delaRek(x, y, w, h - h1, andra)];
+                }
+                return [...delaRek(x, y, w, h1, forsta), ...delaRek(x, y + h1, w, h - h1, andra)];
             }
         }
-        return rum;
+        return delaRek(0, 0, bredd, djup, namn);
+    }
+
+    // Hittar alla par av rum som faktiskt delar en vägg (med tillräckligt lång
+    // gemensam sträcka för att en dörr ska vara rimlig där) - det här är vad som
+    // gör att dörrarna nedan hamnar på RÄTT vägg, mellan RÄTT rum, istället för
+    // att bara gissa "mot mitten" som förut.
+    function hittaGranser(rum) {
+        const EPS = 0.05, MIN_OVERLAP = 1.0;
+        const granser = [];
+        for (let i = 0; i < rum.length; i++) {
+            for (let j = i + 1; j < rum.length; j++) {
+                const a = rum[i], b = rum[j];
+                if (Math.abs((a.x + a.bredd) - b.x) < EPS || Math.abs((b.x + b.bredd) - a.x) < EPS) {
+                    const overlap = Math.min(a.y + a.djup, b.y + b.djup) - Math.max(a.y, b.y);
+                    if (overlap > MIN_OVERLAP) {
+                        const delatX = Math.abs((a.x + a.bredd) - b.x) < EPS ? a.x + a.bredd : b.x + b.bredd;
+                        granser.push({ i, j, axel: 'v', pos: delatX, start: Math.max(a.y, b.y), slut: Math.min(a.y + a.djup, b.y + b.djup) });
+                    }
+                }
+                if (Math.abs((a.y + a.djup) - b.y) < EPS || Math.abs((b.y + b.djup) - a.y) < EPS) {
+                    const overlap = Math.min(a.x + a.bredd, b.x + b.bredd) - Math.max(a.x, b.x);
+                    if (overlap > MIN_OVERLAP) {
+                        const delatY = Math.abs((a.y + a.djup) - b.y) < EPS ? a.y + a.djup : b.y + b.djup;
+                        granser.push({ i, j, axel: 'h', pos: delatY, start: Math.max(a.x, b.x), slut: Math.min(a.x + a.bredd, b.x + b.bredd) });
+                    }
+                }
+            }
+        }
+        return granser;
+    }
+
+    // Entrérummet är det rum som ligger mot söderväggen (byggnadens "framsida") -
+    // föredrar publika rum som Butik/Skänkrum/Sal om flera rum ligger där.
+    function valjEntrerum(rum, totalDjup) {
+        const EPS = 0.05;
+        const kandidater = rum.filter(r => Math.abs((r.y + r.djup) - totalDjup) < EPS);
+        const publik = kandidater.find(r => PUBLIKA_RUM.includes(r.namn));
+        const val = publik || kandidater[0] || rum[0];
+        return rum.indexOf(val);
+    }
+
+    // Väljer vilka väggöppningar som blir dörrar: bygger ett spann-träd från
+    // entrérummet över rumsgränserna (garanterar att man kan gå till alla rum),
+    // och slänger in enstaka extra dörrar för lite realism i större hus.
+    function valjDorrar(rum, granser, entreIdx, rng) {
+        const grannar = rum.map(() => []);
+        granser.forEach((g, gi) => { grannar[g.i].push(gi); grannar[g.j].push(gi); });
+        const besokt = new Set([entreIdx]);
+        const dorrar = [];
+        const ko = [entreIdx];
+        while (ko.length) {
+            const cur = ko.shift();
+            grannar[cur].forEach(gi => {
+                const g = granser[gi];
+                const other = g.i === cur ? g.j : g.i;
+                if (!besokt.has(other)) { besokt.add(other); dorrar.push(g); ko.push(other); }
+            });
+        }
+        granser.forEach(g => { if (!dorrar.includes(g) && rng() < 0.15) dorrar.push(g); });
+        return dorrar;
     }
 
     function genereraPlanritning(byggnad) {
         const rng = skapaSeedadRNG(byggnad.namn + "|" + byggnad.stad);
         const bredd = byggnad.bredd || 8, djup = byggnad.djup || 10;
-        const rumsnamn = valjRumslista(byggnad.typ, bredd, djup, rng);
+        const kategori = kategoriForTyp(byggnad.typ);
+        const rumsnamn = valjRumslista(kategori, bredd, djup, rng);
         const rum = delaUppIRum(bredd, djup, rumsnamn, rng);
         rum.forEach(r => { r.mobler = MOBLER_PER_RUM[r.namn] || []; });
-        return { bredd, djup, rum };
+
+        const granser = hittaGranser(rum);
+        const entreIdx = valjEntrerum(rum, djup);
+        const dorrar = rum.length > 1 ? valjDorrar(rum, granser, entreIdx, rng) : [];
+
+        return { bredd, djup, rum, dorrar, entreIdx };
     }
 
-    // Ritar upp en genererad planritning som SVG. Enkel stil: rum som fyllda
-    // rektanglar med väggkontur, en dörröppning per rum, och några få möbel-
-    // ikoner (namngivna rektanglar) - ingen finlirad detaljnivå.
+    // Möbler längs väggarna: fyller på i en rad längs söderväggen och fortsätter
+    // automatiskt på en andra rad (norrväggen) om rummet har fler pjäser än vad
+    // som får plats på en rad - så ett stort förråd/butik faktiskt ser möblerat ut.
+    function ritaMobler(r, x, y, w, h, SKALA) {
+        let svg = '';
+        const items = r.mobler || [];
+        const radHojd = Math.min(h * 0.22, 22);
+        const rader = ['bottom', 'top'];
+        let idx = 0, radIdx = 0;
+        while (idx < items.length && radIdx < rader.length) {
+            const rad = rader[radIdx];
+            let cursorX = x + 8;
+            const maxX = x + w - 8;
+            let placeradeDennaRad = 0;
+            while (idx < items.length) {
+                const namn = items[idx];
+                const storlek = FURNITURE_STORLEK[namn] || [0.8, 0.5];
+                const mw = Math.min(storlek[0] * SKALA, w * 0.42);
+                const mh = Math.min(storlek[1] * SKALA, radHojd);
+                if (cursorX + mw > maxX) break;
+                const my = rad === 'bottom' ? (y + h - mh - 8) : (y + 22);
+                if (my > y + 20 && my + mh < y + h - 6) {
+                    svg += `<rect x="${cursorX}" y="${my}" width="${mw}" height="${mh}" fill="#a9784f" stroke="#3e2c1c" stroke-width="1.3" rx="2"/>`;
+                    if (mw > 26) svg += `<text x="${cursorX + mw/2}" y="${my + mh/2 + 3}" text-anchor="middle" font-size="7.5" fill="#fdf6e3">${namn}</text>`;
+                }
+                cursorX += mw + 6;
+                placeradeDennaRad++;
+                idx++;
+            }
+            if (placeradeDennaRad === 0) break; // rummet är för smalt - undvik oändlig loop
+            radIdx++;
+        }
+        return svg;
+    }
+
+    // Ritar upp en genererad planritning som SVG: rumsgolv, väggar, dörrar som
+    // faktiskt sitter mellan angränsande rum, fönster på yttervägg, och en tydlig
+    // gatuentré, plus möbler längs väggarna i varje rum.
     function renderPlanritningSVG(byggnad, layout) {
-        const SKALA = 18; // pixlar per meter
+        const SKALA = 20; // pixlar per meter
         const bredd = layout.bredd * SKALA, djup = layout.djup * SKALA;
-        const marginal = 30;
+        const marginal = 34;
         const svgBredd = bredd + marginal * 2, svgDjup = djup + marginal * 2;
+        const DORR_BREDD = 18;
 
         let svg = `<svg viewBox="0 0 ${svgBredd} ${svgDjup}" xmlns="http://www.w3.org/2000/svg" style="background:#f4ecd8; width:100%; height:auto;">`;
+        svg += `<defs><pattern id="golv" width="18" height="18" patternUnits="userSpaceOnUse"><rect width="18" height="18" fill="#fdf6e3"/><path d="M0 18 L18 0" stroke="#e8dcc0" stroke-width="1"/></pattern></defs>`;
 
-        layout.rum.forEach((r, i) => {
+        // Golv, etiketter och möbler
+        layout.rum.forEach(r => {
             const x = marginal + r.x * SKALA, y = marginal + r.y * SKALA;
             const w = r.bredd * SKALA, h = r.djup * SKALA;
-            svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#fdf6e3" stroke="#3e2c1c" stroke-width="3"/>`;
+            svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="url(#golv)"/>`;
             svg += `<text x="${x + w/2}" y="${y + 18}" text-anchor="middle" font-size="13" font-weight="bold" fill="#3e2c1c">${r.namn}</text>`;
-
-            // Enkel dörröppning: ett vitt "hack" i väggen mot byggnadens mitt
-            const cx = bredd/2 + marginal, cy = djup/2 + marginal;
-            const rMidX = x + w/2, rMidY = y + h/2;
-            const dorrBredd = 16;
-            if (Math.abs(rMidX - cx) > Math.abs(rMidY - cy)) {
-                const dorrX = rMidX < cx ? x + w : x;
-                svg += `<rect x="${dorrX - 1.5}" y="${rMidY - dorrBredd/2}" width="3" height="${dorrBredd}" fill="#fdf6e3"/>`;
-            } else {
-                const dorrY = rMidY < cy ? y + h : y;
-                svg += `<rect x="${rMidX - dorrBredd/2}" y="${dorrY - 1.5}" width="${dorrBredd}" height="3" fill="#fdf6e3"/>`;
-            }
-
-            // Möbler: enkla små rektanglar i en rad nära en vägg
-            r.mobler.forEach((m, mi) => {
-                const mw = Math.min(w * 0.28, 34), mh = 16;
-                const mx = x + 10 + mi * (mw + 8);
-                const my = y + h - mh - 8;
-                if (mx + mw < x + w - 5) {
-                    svg += `<rect x="${mx}" y="${my}" width="${mw}" height="${mh}" fill="#a9784f" stroke="#3e2c1c" stroke-width="1.5" rx="2"/>`;
-                    svg += `<text x="${mx + mw/2}" y="${my + mh/2 + 4}" text-anchor="middle" font-size="8" fill="#fdf6e3">${m}</text>`;
-                }
-            });
+            svg += ritaMobler(r, x, y, w, h, SKALA);
         });
 
-        // Yttre entré: ett litet hack längst ner på byggnadens ytterkontur
-        svg += `<rect x="${marginal + bredd/2 - 10}" y="${marginal + djup - 1.5}" width="20" height="4" fill="#f4ecd8"/>`;
-        svg += `<rect x="${marginal}" y="${marginal}" width="${bredd}" height="${djup}" fill="none" stroke="#221708" stroke-width="4"/>`;
+        // Innerväggar (varje rums kontur)
+        layout.rum.forEach(r => {
+            const x = marginal + r.x * SKALA, y = marginal + r.y * SKALA;
+            const w = r.bredd * SKALA, h = r.djup * SKALA;
+            svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="#3e2c1c" stroke-width="2.5"/>`;
+        });
+
+        // Dörröppningar mellan angränsande rum - exakt på den delade väggen
+        (layout.dorrar || []).forEach(d => {
+            const mittPos = (d.start + d.slut) / 2;
+            if (d.axel === 'v') {
+                const px = marginal + d.pos * SKALA, py = marginal + mittPos * SKALA;
+                svg += `<rect x="${px - 1.5}" y="${py - DORR_BREDD/2}" width="3" height="${DORR_BREDD}" fill="#fdf6e3"/>`;
+            } else {
+                const px = marginal + mittPos * SKALA, py = marginal + d.pos * SKALA;
+                svg += `<rect x="${px - DORR_BREDD/2}" y="${py - 1.5}" width="${DORR_BREDD}" height="3" fill="#fdf6e3"/>`;
+            }
+        });
+
+        // Fönster på ytterväggar (norr/väster), utom i förråd/celler och entrérummet
+        layout.rum.forEach((r, i) => {
+            if (INGA_FONSTER.includes(r.namn) || i === layout.entreIdx) return;
+            const x = marginal + r.x * SKALA, y = marginal + r.y * SKALA;
+            const w = r.bredd * SKALA, h = r.djup * SKALA;
+            const FBREDD = 14;
+            if (Math.abs(r.y) < 0.05 && w > 40) {
+                svg += `<rect x="${x + w/2 - FBREDD/2}" y="${y - 1.5}" width="${FBREDD}" height="3" fill="#7ec8e3"/>`;
+            } else if (Math.abs(r.x) < 0.05 && h > 40) {
+                svg += `<rect x="${x - 1.5}" y="${y + h/2 - FBREDD/2}" width="3" height="${FBREDD}" fill="#7ec8e3"/>`;
+            }
+        });
+
+        // Gatuentré: dörr i ytterväggen på entrérummet, alltid mot söder
+        const entreRum = layout.rum[layout.entreIdx];
+        if (entreRum) {
+            const ex = marginal + (entreRum.x + entreRum.bredd/2) * SKALA;
+            const ey = marginal + djup;
+            svg += `<rect x="${ex - 11}" y="${ey - 1.5}" width="22" height="4" fill="#f4ecd8"/>`;
+            svg += `<text x="${ex}" y="${ey + 16}" text-anchor="middle" font-size="9" fill="#8a6d4a">Entré</text>`;
+        }
+
+        // Ytterväggen, tjock, ritas sist ovanpå allt
+        svg += `<rect x="${marginal}" y="${marginal}" width="${bredd}" height="${djup}" fill="none" stroke="#221708" stroke-width="5"/>`;
         svg += `</svg>`;
         return svg;
     }
