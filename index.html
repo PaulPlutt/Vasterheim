@@ -168,6 +168,16 @@
     <div id="grid-label" style="display:none; position:absolute; bottom:10px; left:15px; z-index:1002; background:rgba(11,29,33,0.85); color:#8eb0b7; padding:4px 10px; border-radius:4px; font-size:11px; font-weight:bold;"></div>
     <div id="building-legend" style="display:none; position:absolute; bottom:10px; right:15px; z-index:1002; background:rgba(11,29,33,0.9); border:1px solid #2a4d53; border-radius:6px; padding:10px 14px; font-size:14px;"></div>
 
+    <div id="planritning-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:3000; align-items:center; justify-content:center;">
+        <div style="background:#1a2e33; border:2px solid #447a82; border-radius:8px; padding:20px; max-width:600px; width:90%; max-height:85vh; overflow:auto;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <h3 id="planritning-titel" style="color:#c9c2a8; margin:0;"></h3>
+                <button onclick="closePlanritning()" style="background:#c0392b; color:white; border:none; border-radius:4px; padding:6px 12px; cursor:pointer; font-weight:bold;">✕ Stäng</button>
+            </div>
+            <div id="planritning-innehall"></div>
+        </div>
+    </div>
+
     <button id="toggle-editor-btn" class="dm-only-btn" onclick="toggleEditorPanel()">◀ REDIGERA</button>
     <button id="back-to-world-btn" style="display:none; position:absolute; top:15px; left:15px; z-index:1002; background:#2a4d53; color:#8eb0b7; border:2px solid #447a82; padding:10px 12px; cursor:pointer; font-size:13px; font-weight:bold; border-radius:5px;" onclick="closeCityMap()">⬅ Till världskartan</button>
     <button id="grid-toggle-btn" style="display:none; position:absolute; top:15px; left:170px; z-index:1002; background:#2a4d53; color:#8eb0b7; border:2px solid #447a82; padding:10px 12px; cursor:pointer; font-size:13px; font-weight:bold; border-radius:5px;" onclick="toggleGrid()">🔲 Rutnät</button>
@@ -810,6 +820,181 @@
         return TYP_FARG[uppslag] || "#f1c40f";
     }
 
+    // ============================================================
+    // NYTT: Planritningar - slumpas fram helt lokalt (ingen laddningstid
+    // alls) utifrån byggnadens typ, storlek och namn som frö. Samma hus
+    // ger alltid samma layout igen. Egna tillägg (t.ex. en källare) sparas
+    // separat och läggs bara till på begäran (se sparaPlanritningTillagg).
+    // ============================================================
+
+    // Enkel seedad slumpgenerator (mulberry32) - Math.random() går inte att seeda.
+    function skapaSeedadRNG(sträng) {
+        let h = 1779033703 ^ sträng.length;
+        for (let i = 0; i < sträng.length; i++) {
+            h = Math.imul(h ^ sträng.charCodeAt(i), 3432918353);
+            h = (h << 13) | (h >>> 19);
+        }
+        return function () {
+            h = Math.imul(h ^ (h >>> 16), 2246822519);
+            h = Math.imul(h ^ (h >>> 13), 3266489917);
+            h = (h ^ (h >>> 16)) >>> 0;
+            return h / 4294967296;
+        };
+    }
+
+    // Rumsmallar per byggnadstyp: hur många rum, vad de heter, och vilka möbler
+    // (enkla, få per rum - ingen detaljnivå med t.ex. flaskor eller tavlor).
+    const RUMSMALLAR = {
+        "Bostad": { smaRum: ["Allrum"], medelRum: ["Kök/Allrum", "Sovrum"], storaRum: ["Kök", "Allrum", "Sovrum"] },
+        "Taverna": { rum: ["Skänkrum", "Kök", "Förråd"] },
+        "Värdshus": { rum: ["Skänkrum", "Kök", "Gästrum"] },
+        "Handel": { rum: ["Butik", "Förråd"] },
+        "Hantverk": { rum: ["Verkstad", "Bostad"] },
+        "Religiös": { rum: ["Sal", "Sakristia"] },
+        "Vakt": { rum: ["Vaktrum", "Cell"] },
+        "Stadshus": { rum: ["Sal", "Kontor"] },
+        "Borg": { rum: ["Sal", "Sovkammare", "Skattkammare"] },
+        "Skola": { rum: ["Klassrum", "Klassrum"] },
+        "Övrigt": { rum: ["Rum", "Förråd"] }
+    };
+    const MOBLER_PER_RUM = {
+        "Allrum": ["Bord", "Stolar"], "Kök/Allrum": ["Bord", "Spis"], "Sovrum": ["Säng", "Skåp"],
+        "Kök": ["Spis", "Bord"], "Skänkrum": ["Disk", "Bord"], "Förråd": ["Hyllor"],
+        "Gästrum": ["Säng"], "Butik": ["Disk", "Hyllor"], "Verkstad": ["Arbetsbänk"],
+        "Bostad": ["Säng", "Bord"], "Sal": ["Bord"], "Sakristia": ["Skåp"],
+        "Vaktrum": ["Bord", "Vapenställ"], "Cell": ["Halmbädd"], "Kontor": ["Skrivbord"],
+        "Sovkammare": ["Säng", "Skåp"], "Skattkammare": ["Kista"], "Klassrum": ["Bänkar"]
+    };
+
+    function valjRumslista(typ, bredd, djup, rng) {
+        const mall = RUMSMALLAR[typ] || RUMSMALLAR["Övrigt"];
+        if (mall.rum) return mall.rum;
+        // Bostad har storleksberoende antal rum
+        const yta = bredd * djup;
+        if (yta < 45) return mall.smaRum;
+        if (yta < 90) return mall.medelRum;
+        return mall.storaRum;
+    }
+
+    // Delar upp byggnadens rektangel i N rum, enkel rutnäts-/delningslogik.
+    function delaUppIRum(bredd, djup, namn, rng) {
+        const n = namn.length;
+        const rum = [];
+        if (n === 1) {
+            rum.push({ namn: namn[0], x: 0, y: 0, bredd, djup });
+        } else if (n === 2) {
+            const langsBredd = bredd >= djup;
+            const andel = 0.45 + rng() * 0.2; // 45-65%
+            if (langsBredd) {
+                rum.push({ namn: namn[0], x: 0, y: 0, bredd: bredd * andel, djup });
+                rum.push({ namn: namn[1], x: bredd * andel, y: 0, bredd: bredd * (1 - andel), djup });
+            } else {
+                rum.push({ namn: namn[0], x: 0, y: 0, bredd, djup: djup * andel });
+                rum.push({ namn: namn[1], x: 0, y: djup * andel, bredd, djup: djup * (1 - andel) });
+            }
+        } else if (n === 3) {
+            const forstaAndel = 0.4 + rng() * 0.15;
+            const langsBredd = bredd >= djup;
+            if (langsBredd) {
+                const b1 = bredd * forstaAndel, bRest = bredd - b1;
+                rum.push({ namn: namn[0], x: 0, y: 0, bredd: b1, djup });
+                const andraAndel = 0.4 + rng() * 0.2;
+                rum.push({ namn: namn[1], x: b1, y: 0, bredd: bRest, djup: djup * andraAndel });
+                rum.push({ namn: namn[2], x: b1, y: djup * andraAndel, bredd: bRest, djup: djup * (1 - andraAndel) });
+            } else {
+                const d1 = djup * forstaAndel, dRest = djup - d1;
+                rum.push({ namn: namn[0], x: 0, y: 0, bredd, djup: d1 });
+                const andraAndel = 0.4 + rng() * 0.2;
+                rum.push({ namn: namn[1], x: 0, y: d1, bredd: bredd * andraAndel, djup: dRest });
+                rum.push({ namn: namn[2], x: bredd * andraAndel, y: d1, bredd: bredd * (1 - andraAndel), djup: dRest });
+            }
+        } else {
+            // 4+ rum: enkelt 2x2-rutnät med lite varierad storlek
+            const bAndel = 0.42 + rng() * 0.16, dAndel = 0.42 + rng() * 0.16;
+            const positioner = [[0,0], [bAndel,0], [0,dAndel], [bAndel,dAndel]];
+            for (let i = 0; i < Math.min(n, 4); i++) {
+                const [px, py] = positioner[i];
+                rum.push({
+                    namn: namn[i],
+                    x: bredd * px, y: djup * py,
+                    bredd: bredd * (px === 0 ? bAndel : 1 - bAndel),
+                    djup: djup * (py === 0 ? dAndel : 1 - dAndel)
+                });
+            }
+        }
+        return rum;
+    }
+
+    function genereraPlanritning(byggnad) {
+        const rng = skapaSeedadRNG(byggnad.namn + "|" + byggnad.stad);
+        const bredd = byggnad.bredd || 8, djup = byggnad.djup || 10;
+        const rumsnamn = valjRumslista(byggnad.typ, bredd, djup, rng);
+        const rum = delaUppIRum(bredd, djup, rumsnamn, rng);
+        rum.forEach(r => { r.mobler = MOBLER_PER_RUM[r.namn] || []; });
+        return { bredd, djup, rum };
+    }
+
+    // Ritar upp en genererad planritning som SVG. Enkel stil: rum som fyllda
+    // rektanglar med väggkontur, en dörröppning per rum, och några få möbel-
+    // ikoner (namngivna rektanglar) - ingen finlirad detaljnivå.
+    function renderPlanritningSVG(byggnad, layout) {
+        const SKALA = 18; // pixlar per meter
+        const bredd = layout.bredd * SKALA, djup = layout.djup * SKALA;
+        const marginal = 30;
+        const svgBredd = bredd + marginal * 2, svgDjup = djup + marginal * 2;
+
+        let svg = `<svg viewBox="0 0 ${svgBredd} ${svgDjup}" xmlns="http://www.w3.org/2000/svg" style="background:#f4ecd8; width:100%; height:auto;">`;
+
+        layout.rum.forEach((r, i) => {
+            const x = marginal + r.x * SKALA, y = marginal + r.y * SKALA;
+            const w = r.bredd * SKALA, h = r.djup * SKALA;
+            svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#fdf6e3" stroke="#3e2c1c" stroke-width="3"/>`;
+            svg += `<text x="${x + w/2}" y="${y + 18}" text-anchor="middle" font-size="13" font-weight="bold" fill="#3e2c1c">${r.namn}</text>`;
+
+            // Enkel dörröppning: ett vitt "hack" i väggen mot byggnadens mitt
+            const cx = bredd/2 + marginal, cy = djup/2 + marginal;
+            const rMidX = x + w/2, rMidY = y + h/2;
+            const dorrBredd = 16;
+            if (Math.abs(rMidX - cx) > Math.abs(rMidY - cy)) {
+                const dorrX = rMidX < cx ? x + w : x;
+                svg += `<rect x="${dorrX - 1.5}" y="${rMidY - dorrBredd/2}" width="3" height="${dorrBredd}" fill="#fdf6e3"/>`;
+            } else {
+                const dorrY = rMidY < cy ? y + h : y;
+                svg += `<rect x="${rMidX - dorrBredd/2}" y="${dorrY - 1.5}" width="${dorrBredd}" height="3" fill="#fdf6e3"/>`;
+            }
+
+            // Möbler: enkla små rektanglar i en rad nära en vägg
+            r.mobler.forEach((m, mi) => {
+                const mw = Math.min(w * 0.28, 34), mh = 16;
+                const mx = x + 10 + mi * (mw + 8);
+                const my = y + h - mh - 8;
+                if (mx + mw < x + w - 5) {
+                    svg += `<rect x="${mx}" y="${my}" width="${mw}" height="${mh}" fill="#a9784f" stroke="#3e2c1c" stroke-width="1.5" rx="2"/>`;
+                    svg += `<text x="${mx + mw/2}" y="${my + mh/2 + 4}" text-anchor="middle" font-size="8" fill="#fdf6e3">${m}</text>`;
+                }
+            });
+        });
+
+        // Yttre entré: ett litet hack längst ner på byggnadens ytterkontur
+        svg += `<rect x="${marginal + bredd/2 - 10}" y="${marginal + djup - 1.5}" width="20" height="4" fill="#f4ecd8"/>`;
+        svg += `<rect x="${marginal}" y="${marginal}" width="${bredd}" height="${djup}" fill="none" stroke="#221708" stroke-width="4"/>`;
+        svg += `</svg>`;
+        return svg;
+    }
+
+    function openPlanritning(byggnadNamn) {
+        const b = contentBank.buildings.find(bb => bb.stad === currentCityName && bb.namn === byggnadNamn);
+        if (!b) return;
+        const layout = genereraPlanritning(b);
+        document.getElementById('planritning-titel').innerText = `${b.namn} (${b.typ})`;
+        document.getElementById('planritning-innehall').innerHTML = renderPlanritningSVG(b, layout);
+        document.getElementById('planritning-modal').style.display = 'flex';
+    }
+
+    function closePlanritning() {
+        document.getElementById('planritning-modal').style.display = 'none';
+    }
+
     function renderBuildingLegend() {
         const el = document.getElementById('building-legend');
         el.innerHTML = Object.entries(TYP_FARG).map(([typ, farg]) =>
@@ -1047,6 +1232,7 @@
                 content += `<p class="popup-desc">Ingen registrerad invånare här just nu.</p>`;
             }
             content += `</div>`;
+            content += `<button onclick="openPlanritning('${b.namn.replace(/'/g, "\\'")}')" style="margin-top:8px; width:100%; background:#2a4d53; color:#c9c2a8; border:1px solid #447a82; border-radius:4px; padding:6px; cursor:pointer; font-size:12px;">🏠 Visa planritning</button>`;
 
             // NYTT: om byggnaden har en riktig polygonform (t.ex. importerad från ett
             // externt kartverktyg) ritas den formen exakt, roterad precis som originalet -
