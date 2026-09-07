@@ -1044,38 +1044,97 @@
         return { bredd, djup, rum, dorrar, entreIdx };
     }
 
-    // Möbler längs väggarna: fyller på i en rad längs söderväggen och fortsätter
-    // automatiskt på en andra rad (norrväggen) om rummet har fler pjäser än vad
-    // som får plats på en rad - så ett stort förråd/butik faktiskt ser möblerat ut.
+    // Ritar ett enskilt möbel-rektangel med etikett (om det får plats).
+    function ritaMobel(x, y, w, h, namn) {
+        let svg = `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#a9784f" stroke="#3e2c1c" stroke-width="1.3" rx="2"/>`;
+        if (Math.max(w, h) > 22) {
+            const midx = x + w/2, midy = y + h/2;
+            const vertikal = h > w * 1.3;
+            if (vertikal) svg += `<text x="${midx}" y="${midy + 3}" text-anchor="middle" font-size="7.5" fill="#fdf6e3" transform="rotate(-90 ${midx} ${midy})">${namn}</text>`;
+            else svg += `<text x="${midx}" y="${midy + 3}" text-anchor="middle" font-size="7.5" fill="#fdf6e3">${namn}</text>`;
+        }
+        return svg;
+    }
+
+    // Möblerar rummet runt ALLA fyra väggar (roterar syd/väst/nord/öst för varje
+    // pjäs) istället för att bunta ihop allt i en enda rad mot en vägg - ett
+    // förråd med tre hyllor sprids alltså ut i rummet, inte radas på ett ställe.
+    // Bord+Stolar får dessutom en liten grupp mitt i rummet, som ett riktigt
+    // sittbord, om rummet är stort nog för det.
     function ritaMobler(r, x, y, w, h, SKALA) {
         let svg = '';
-        const items = r.mobler || [];
-        const radHojd = Math.min(h * 0.22, 22);
-        const rader = ['bottom', 'top'];
-        let idx = 0, radIdx = 0;
-        while (idx < items.length && radIdx < rader.length) {
-            const rad = rader[radIdx];
-            let cursorX = x + 8;
-            const maxX = x + w - 8;
-            let placeradeDennaRad = 0;
-            while (idx < items.length) {
-                const namn = items[idx];
-                const storlek = FURNITURE_STORLEK[namn] || [0.8, 0.5];
-                const mw = Math.min(storlek[0] * SKALA, w * 0.42);
-                const mh = Math.min(storlek[1] * SKALA, radHojd);
-                if (cursorX + mw > maxX) break;
-                const my = rad === 'bottom' ? (y + h - mh - 8) : (y + 22);
-                if (my > y + 20 && my + mh < y + h - 6) {
-                    svg += `<rect x="${cursorX}" y="${my}" width="${mw}" height="${mh}" fill="#a9784f" stroke="#3e2c1c" stroke-width="1.3" rx="2"/>`;
-                    if (mw > 26) svg += `<text x="${cursorX + mw/2}" y="${my + mh/2 + 3}" text-anchor="middle" font-size="7.5" fill="#fdf6e3">${namn}</text>`;
-                }
-                cursorX += mw + 6;
-                placeradeDennaRad++;
-                idx++;
-            }
-            if (placeradeDennaRad === 0) break; // rummet är för smalt - undvik oändlig loop
-            radIdx++;
+        const items = (r.mobler || []).slice();
+        const margin = 8, labelPlats = 24; // labelPlats: utrymme att undvika rumsnamnet högst upp
+        const ytaKvm = (w / SKALA) * (h / SKALA);
+        // Alla redan placerade möbler i DETTA rum - varje ny pjäs kontrolleras mot
+        // listan innan den ritas, så två pjäser aldrig kan hamna ovanpå varandra
+        // oavsett hur smalt eller kort rummet råkar vara.
+        const placerade = [];
+        function krockar(a) {
+            return placerade.some(b => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y);
         }
+        function ritaOchSpara(px, py, pw, ph, namn) {
+            const rekt = { x: px, y: py, w: pw, h: ph };
+            if (krockar(rekt)) return false;
+            placerade.push(rekt);
+            svg += ritaMobel(px, py, pw, ph, namn);
+            return true;
+        }
+
+        // Bord + Stolar mitt i rummet, som ett litet sittbord - bara om det finns plats
+        const bordIdx = items.indexOf("Bord"), stolIdx = items.indexOf("Stolar");
+        if (bordIdx > -1 && stolIdx > -1 && ytaKvm > 10 && w > 70 && h > 70) {
+            const bs = FURNITURE_STORLEK["Bord"];
+            const bw = Math.min(bs[0] * SKALA, w * 0.3), bh = Math.min(bs[1] * SKALA, h * 0.22);
+            const bx = x + w/2 - bw/2, by = y + h/2 - bh/2;
+            if (ritaOchSpara(bx, by, bw, bh, "Bord")) {
+                const ss = FURNITURE_STORLEK["Stolar"];
+                const sw = Math.min(ss[0] * SKALA, 15), sh = Math.min(ss[1] * SKALA, 11);
+                ritaOchSpara(bx - sw - 5, by + bh/2 - sh/2, sw, sh, "");
+                ritaOchSpara(bx + bw + 5, by + bh/2 - sh/2, sw, sh, "");
+                items.splice(items.indexOf("Bord"), 1);
+                items.splice(items.indexOf("Stolar"), 1);
+            }
+        }
+
+        // Resten av möblerna: en pjäs i taget, roterande mellan de fyra väggarna,
+        // var och en med sin egen "kö" så flera pjäser på samma vägg radar upp
+        // sig efter varandra. Om kandidatplatsen ändå skulle krocka med något
+        // redan ritat (t.ex. i ett väldigt grunt eller smalt rum) provas nästa
+        // vägg istället - annars hoppas pjäsen helt enkelt över.
+        const CORNER_BUFFER = 30;
+        const kö = {
+            syd: x + margin, nord: x + margin,
+            vast: y + labelPlats + CORNER_BUFFER, ost: y + labelPlats + CORNER_BUFFER
+        };
+        const ORDNING = ["syd", "vast", "nord", "ost"];
+        let vaggIdx = 0, försök = 0;
+        items.forEach(namn => {
+            const storlek = FURNITURE_STORLEK[namn] || [0.8, 0.5];
+            let placerad = false;
+            försök = 0;
+            while (!placerad && försök < 4) {
+                const vagg = ORDNING[vaggIdx % 4];
+                vaggIdx++; försök++;
+                if (vagg === "syd" || vagg === "nord") {
+                    const mw = Math.min(storlek[0] * SKALA, w * 0.38);
+                    const mh = Math.min(storlek[1] * SKALA, h * 0.2, 24);
+                    if (kö[vagg] + mw > x + w - margin) continue;
+                    const my = vagg === "syd" ? y + h - mh - margin : y + labelPlats;
+                    if (!ritaOchSpara(kö[vagg], my, mw, mh, namn)) continue;
+                    kö[vagg] += mw + 6;
+                    placerad = true;
+                } else {
+                    const mh = Math.min(storlek[0] * SKALA, h * 0.38);
+                    const mw = Math.min(storlek[1] * SKALA, w * 0.2, 24);
+                    if (kö[vagg] + mh > y + h - margin - CORNER_BUFFER) continue;
+                    const mx = vagg === "vast" ? x + margin : x + w - mw - margin;
+                    if (!ritaOchSpara(mx, kö[vagg], mw, mh, namn)) continue;
+                    kö[vagg] += mh + 6;
+                    placerad = true;
+                }
+            }
+        });
         return svg;
     }
 
